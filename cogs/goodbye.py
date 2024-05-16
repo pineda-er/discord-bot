@@ -26,7 +26,7 @@ class goodbye(commands.Cog):
         bigsize = (pfp.size[0] * 3, pfp.size[1] * 3)
         mask = Image.new('L', bigsize, 0)
         draw = ImageDraw.Draw(mask) 
-        draw.ellipse((0, 0) + bigsize, fill=255)
+        draw.ellipse((0, 0) + bigsize, outline='black', width=10, fill=255)
         mask = mask.resize(pfp.size, Image.Resampling.LANCZOS)
         pfp.putalpha(mask)
             
@@ -59,7 +59,7 @@ class goodbye(commands.Cog):
         X, Y = center_x+5, center_y-58
         r = 108
   
-        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = "black", outline ='black', width=100)
+        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = 255, outline ="black", width=100)
         draw.text((width1/2, 280),"GOODBYE",goodbye_color,font=goodbye_font, anchor="mm", stroke_width=1, stroke_fill='black')
         draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='gray')
             
