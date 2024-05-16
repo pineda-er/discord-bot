@@ -45,7 +45,7 @@ class drop(commands.Cog):
 
     # Command that responds with "Pong" when the bot receives a "!ping" command
     @commands.command()
-    @commands.has_role("officers")
+    @commands.has_any_role('Admin','Moderator')
     async def drop(self, ctx, amount= None):
         if(amount == "50" or amount == "100" or amount == "nitro"):
             channel = self.bot.get_channel(int(os.environ['DROP_CHANNEL']))

@@ -2,6 +2,7 @@ import asyncio
 import os
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
 
 # Set up intents
 intents = discord.Intents.all()
@@ -28,6 +29,7 @@ async def load():
 # Main asynchronous function to load cogs and start the bot
 async def main():
     await load()
+    load_dotenv()
     await bot.start(os.getenv('DISCORD_API_TOKEN'))
 
 # Run the main function
