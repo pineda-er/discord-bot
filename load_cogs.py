@@ -9,7 +9,7 @@ intents = discord.Intents.all()
 intents.members = True
 
 # Create a bot instance with a command prefix and intents
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix="$", intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():

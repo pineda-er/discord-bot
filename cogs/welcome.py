@@ -22,7 +22,7 @@ class welcome(commands.Cog):
         data = BytesIO(await av.read())
             
         pfp = Image.open(data)
-        pfp = pfp.resize((200, 200))
+        pfp = pfp.resize((215, 215))
             
         bigsize = (pfp.size[0] * 3, pfp.size[1] * 3)
         mask = Image.new('L', bigsize, 0)
@@ -50,7 +50,7 @@ class welcome(commands.Cog):
         # back_im = im1.copy()
         # back_im.paste(im2,(im2_x, im2_y))
         
-        welcome_font = ImageFont.truetype("ariblk.ttf", 50)
+        welcome_font = ImageFont.truetype("ariblk.ttf", 60)
         name_font = ImageFont.truetype("ariblk.ttf", 30)
         welcome_color = (248,218,150) # RGB
         user_color = (48,255,41) # RGB
