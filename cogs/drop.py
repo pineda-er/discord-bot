@@ -1,4 +1,5 @@
 import os
+import time
 import discord
 from discord.ext import commands
 
@@ -53,7 +54,7 @@ class drop(commands.Cog):
             embed = discord.Embed()
             embed.set_image(url=f"attachment://{amount}.jpg")
             embed.set_footer(text="Grab it before someone else does!")
-            view = SimpleView(timeout=2)
+            view = SimpleView(timeout=3)
             
             message = await channel.send('**Hala nahulog!**', embed=embed, file=file, view=view)
             # message = await channel.send(view=view)

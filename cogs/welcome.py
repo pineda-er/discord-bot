@@ -56,6 +56,10 @@ class welcome(commands.Cog):
         user_color = (48,255,41) # RGB
             
         draw = ImageDraw.Draw(my_image)
+        X, Y = center_x+5, center_y-58
+        r = 108
+  
+        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = "#c7ff29", outline ='#c7ff29', width=100)
         draw.text((width1/2, 280),"WELCOME",welcome_color,font=welcome_font, anchor="mm", stroke_width=1, stroke_fill='#8e7339')
         draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='#0d7c09')
             

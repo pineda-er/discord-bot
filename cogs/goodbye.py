@@ -55,6 +55,11 @@ class goodbye(commands.Cog):
         user_color = (140, 140, 140) # RGB
             
         draw = ImageDraw.Draw(my_image)
+
+        X, Y = center_x+5, center_y-58
+        r = 108
+  
+        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = "black", outline ='black', width=100)
         draw.text((width1/2, 280),"GOODBYE",goodbye_color,font=goodbye_font, anchor="mm", stroke_width=1, stroke_fill='black')
         draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='gray')
             
