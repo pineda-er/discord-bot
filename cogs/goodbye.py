@@ -21,7 +21,7 @@ class goodbye(commands.Cog):
         data = BytesIO(await av.read())
             
         pfp = Image.open(data)
-        pfp = pfp.resize((200, 200))
+        pfp = pfp.resize((210, 210))
             
         bigsize = (pfp.size[0] * 3, pfp.size[1] * 3)
         mask = Image.new('L', bigsize, 0)
@@ -49,14 +49,14 @@ class goodbye(commands.Cog):
         # back_im = im1.copy()
         # back_im.paste(im2,(im2_x, im2_y))
             
-        goodbye_font = ImageFont.truetype("ariblk.ttf", 50)
+        goodbye_font = ImageFont.truetype("ariblk.ttf", 55)
         name_font = ImageFont.truetype("ariblk.ttf", 30)
         goodbye_color = (248,218,150) # RGB
         user_color = (140, 140, 140) # RGB
             
         draw = ImageDraw.Draw(my_image)
-        draw.text((width1/2, 270),"GOODBYE",goodbye_color,font=goodbye_font, anchor="mm", stroke_width=1, stroke_fill='black')
-        draw.text((width1/2, 310),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='gray')
+        draw.text((width1/2, 280),"GOODBYE",goodbye_color,font=goodbye_font, anchor="mm", stroke_width=1, stroke_fill='black')
+        draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='gray')
             
         my_image = my_image.copy()
         my_image.paste(pfp, (317, 40), pfp,)

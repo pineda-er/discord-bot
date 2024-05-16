@@ -22,7 +22,7 @@ class welcome(commands.Cog):
         data = BytesIO(await av.read())
             
         pfp = Image.open(data)
-        pfp = pfp.resize((215, 215))
+        pfp = pfp.resize((210, 210))
             
         bigsize = (pfp.size[0] * 3, pfp.size[1] * 3)
         mask = Image.new('L', bigsize, 0)
@@ -50,14 +50,14 @@ class welcome(commands.Cog):
         # back_im = im1.copy()
         # back_im.paste(im2,(im2_x, im2_y))
         
-        welcome_font = ImageFont.truetype("ariblk.ttf", 60)
+        welcome_font = ImageFont.truetype("ariblk.ttf", 55)
         name_font = ImageFont.truetype("ariblk.ttf", 30)
         welcome_color = (248,218,150) # RGB
         user_color = (48,255,41) # RGB
             
         draw = ImageDraw.Draw(my_image)
-        draw.text((width1/2, 270),"WELCOME",welcome_color,font=welcome_font, anchor="mm", stroke_width=1, stroke_fill='#8e7339')
-        draw.text((width1/2, 310),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='#0d7c09')
+        draw.text((width1/2, 280),"WELCOME",welcome_color,font=welcome_font, anchor="mm", stroke_width=1, stroke_fill='#8e7339')
+        draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='#0d7c09')
             
         my_image = my_image.copy()
         my_image.paste(pfp, (317, 40), pfp)
