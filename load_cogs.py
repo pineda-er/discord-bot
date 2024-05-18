@@ -15,7 +15,6 @@ firebase_admin.initialize_app(cred)
 # Set up intents
 intents = discord.Intents.all()
 intents.members = True
-menu = EmojiMenu(page_left="◀️", page_right="▶️", remove="❌", active_time=120)
 
 # Create a bot instance with a command prefix and intents
 bot = commands.Bot(command_prefix="$", intents=intents)
@@ -24,7 +23,6 @@ bot.help_command = PrettyHelp(ephemeral=True, color=discord.Colour.green())
 
 @bot.event
 async def on_ready():
-    
     print('We Have logged in as {0.user}'.format(bot))
     await bot.tree.sync()
     

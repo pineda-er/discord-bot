@@ -6,10 +6,14 @@ db = firestore.client()
 
 # Define a cog class that inherits from commands.Cog
 class Channel(commands.Cog):
+    
     """commands: channel"""
     def __init__(self, bot):
         self.bot = bot
-
+        
+    @commands.Cog.listener()
+    async def on_ready(self):
+        print("Channel ready")
 
     @commands.command()
     @commands.has_any_role('Admin','Moderator')
@@ -25,7 +29,7 @@ class Channel(commands.Cog):
             db_server = db.collection("servers").document(str(ctx.message.guild.id))
             db_server.set({f"{sub_command}_channel" : channel}, merge=True)
             embed = discord.Embed(
-                description=f"**Successfully set channel for {sub_command}**",
+                description=f"** ✅ Successfully set channel for {sub_command}**",
                 colour= 0x008000
             )
             await ctx.send(embed=embed)

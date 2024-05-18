@@ -39,7 +39,10 @@ class Drop(commands.Cog):
     """commands: drop"""
     def __init__(self, bot):
         self.bot = bot
-
+        
+    @commands.Cog.listener()
+    async def on_ready(self):
+        print("Drop ready")
 
     @commands.command()
     @commands.has_any_role('Admin','Moderator')
@@ -70,7 +73,7 @@ class Drop(commands.Cog):
         
         elif(item is None):
             embed = discord.Embed(
-                description='Input `50` or `100` or `nitro`',
+                description='**❌ Input `50` or `100` or `nitro`**',
                 colour= 0xFF0000
             )
             await ctx.send(embed=embed)
