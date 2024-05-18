@@ -69,6 +69,7 @@ class drop(commands.Cog):
         
         elif(amount is None):
             await ctx.send('input `50` or `100`')
+            
     @drop.error
     async def say_error(ctx, error):
         if isinstance(error, commands.CommandError):
