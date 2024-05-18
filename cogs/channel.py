@@ -5,14 +5,16 @@ db = firestore.client()
 
 
 # Define a cog class that inherits from commands.Cog
-class SetChannel(commands.Cog):
+class Channel(commands.Cog):
+    """commands: channel"""
     def __init__(self, bot):
         self.bot = bot
 
 
     @commands.command()
     @commands.has_any_role('Admin','Moderator')
-    async def setchannel(self, ctx, sub_command : str, channel : discord.TextChannel | str):
+    async def channel(self, ctx, sub_command : str, channel : discord.TextChannel | str):
+        """Sets a channel on where the bot should send"""
         
         if isinstance(channel, discord.TextChannel):
             channel = str(channel.id)
@@ -28,16 +30,17 @@ class SetChannel(commands.Cog):
             )
             await ctx.send(embed=embed)
     
-    @setchannel.error
+    @channel.error
     async def setup_error(self, ctx, error):
         if isinstance(error, (commands.MissingRequiredArgument, commands.CommandError, commands.errors)):
             embed = discord.Embed(
                 title="Invalid arguments",
-                description="```SUBCOMMANDS: \n drop \n welcome \n goodbye \n \n ex. \n $setup SUB_COMMAND CHANNEL_ID \n $setup SUB_COMMAND #CHANNEL_NAME```"
+                description="```SUBCOMMANDS: \n drop \n welcome \n goodbye \n \n ex. \n $channel SUB_COMMAND CHANNEL_ID \n $channel SUB_COMMAND #CHANNEL_NAME```",
+                colour= 0xFF0000
             )
             
             await ctx.send(embed=embed)
 
 # Function to add this cog to the bot
 async def setup(bot):
-    await bot.add_cog(SetChannel(bot))
+    await bot.add_cog(Channel(bot))

@@ -35,16 +35,17 @@ class SimpleView(discord.ui.View):
     #     self.stop()
 
 # Define a cog class that inherits from commands.Cog
-class drop(commands.Cog):
-    
+class Drop(commands.Cog):
+    """commands: drop"""
     def __init__(self, bot):
         self.bot = bot
 
 
     @commands.command()
     @commands.has_any_role('Admin','Moderator')
-    async def drop(self, ctx, amount = None):
-        if(amount in ("50","100","nitro")):
+    async def drop(self, ctx, item = None):
+        """Sends an item that a member can grab/claim"""
+        if(item in ("50","100","nitro")):
             
             #Connects to firebase firestore to get channel
             db_server = db.collection("servers").document(str(ctx.message.guild.id))
@@ -52,11 +53,11 @@ class drop(commands.Cog):
             db_channel = db_channel["drop_channel"]
             
             channel = self.bot.get_channel(int(db_channel))
-            file = discord.File(f'./image/{amount}.jpg')
+            file = discord.File(f'./image/{item}.jpg')
             embed = discord.Embed(
-                title=f"Someone dropped a {amount}!"
+                title=f"Someone dropped a {item}!"
             )
-            embed.set_image(url=f"attachment://{amount}.jpg")
+            embed.set_image(url=f"attachment://{item}.jpg")
             embed.set_footer(text="Grab it!")
             view = SimpleView(timeout=10)
             
@@ -67,8 +68,12 @@ class drop(commands.Cog):
             await view.wait()
             await view.disable_all_items()
         
-        elif(amount is None):
-            await ctx.send('input `50` or `100`')
+        elif(item is None):
+            embed = discord.Embed(
+                description='Input `50` or `100` or `nitro`',
+                colour= 0xFF0000
+            )
+            await ctx.send(embed=embed)
             
     @drop.error
     async def say_error(ctx, error):
@@ -77,4 +82,4 @@ class drop(commands.Cog):
 
 # Function to add this cog to the bot
 async def setup(bot):
-    await bot.add_cog(drop(bot))
+    await bot.add_cog(Drop(bot))

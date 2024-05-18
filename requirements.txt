@@ -2,3 +2,5 @@ discord.py
 Pillow
 python-dotenv
 firebase_admin
+pretty_help
+

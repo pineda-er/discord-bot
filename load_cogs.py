@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from firebase_config import firebase_config
 import firebase_admin
 from firebase_admin import credentials
+from pretty_help import EmojiMenu, PrettyHelp
 
 cred = credentials.Certificate(firebase_config)
 firebase_admin.initialize_app(cred)
@@ -14,9 +15,12 @@ firebase_admin.initialize_app(cred)
 # Set up intents
 intents = discord.Intents.all()
 intents.members = True
+menu = EmojiMenu(page_left="◀️", page_right="▶️", remove="❌", active_time=120)
 
 # Create a bot instance with a command prefix and intents
-bot = commands.Bot(command_prefix="$", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix="$", intents=intents)
+
+bot.help_command = PrettyHelp(ephemeral=True, color=discord.Colour.green()) 
 
 @bot.event
 async def on_ready():
@@ -30,13 +34,13 @@ async def on_command_error(ctx, error):
         print(error)
         
     
-@bot.hybrid_command()
-async def pong(ctx):
-    await ctx.send("🏓 **Ping!**")
+# @bot.hybrid_command()
+# async def pong(ctx):
+#     await ctx.send("🏓 **Ping!**")
         
-@bot.tree.command(description="hello in another language")
-async def ciao(interaction: discord.Interaction):
-    await interaction.response.send_message(f"Ciao! {interaction.user.mention}", ephemeral=True)
+# @bot.tree.command(description="hello in another language")
+# async def ciao(interaction: discord.Interaction):
+#     await interaction.response.send_message(f"Ciao! {interaction.user.mention}", ephemeral=True)
 
 # Asynchronous function to load all cogs (extensions) from the 'cogs' directory
 async def load():
