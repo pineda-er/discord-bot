@@ -3,6 +3,13 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from firebase_config import firebase_config
+import firebase_admin
+from firebase_admin import credentials
+
+cred = credentials.Certificate(firebase_config)
+firebase_admin.initialize_app(cred)
+
 
 # Set up intents
 intents = discord.Intents.all()
@@ -13,12 +20,13 @@ bot = commands.Bot(command_prefix="$", intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():
+    
     print('We Have logged in as {0.user}'.format(bot))
     await bot.tree.sync()
     
 @bot.event
 async def on_command_error(ctx, error):   
-    if isinstance(error, commands.MissingRequiredArgument):
+    if isinstance(error, (commands.MissingRequiredArgument, commands.CommandError, commands.errors)):
         print(error)
         
     

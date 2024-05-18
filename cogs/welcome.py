@@ -7,6 +7,8 @@ from PIL import ImageFont
 from PIL import ImageDraw
 from PIL import ImageOps
 from discord.ext import commands
+from firebase_admin import firestore
+db = firestore.client()
 
 class welcome(commands.Cog):
     def __init__(self, bot):
@@ -15,6 +17,12 @@ class welcome(commands.Cog):
     # Event listener for when the bot is ready
     @commands.Cog.listener()
     async def on_member_join(self, member):
+        
+        #Connects to firebase firestore to get channel
+        db_server = db.collection("servers").document(str(member.guild.id))
+        db_channel = db_server.get().to_dict()
+        db_channel = db_channel["welcome_channel"]
+        
         my_image = Image.open("./image/welcome.png")
         
         # edit user avatar into round
@@ -73,7 +81,7 @@ class welcome(commands.Cog):
     )
         embed.set_footer(text="HAve Fun! ♡")
         embed.set_image(url="attachment://profile.png")
-        channel = self.bot.get_channel(int(os.environ['WELCOME_CHANNEL']))
+        channel = self.bot.get_channel(int(db_channel))
         await channel.send(f'Welcome to Honeymoon Avenue, {member.mention}', embed=embed, file=file)
 
 # Function to add this cog to the bot

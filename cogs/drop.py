@@ -1,7 +1,7 @@
-import os
-import time
 import discord
 from discord.ext import commands
+from firebase_admin import firestore
+db = firestore.client()
 
 class SimpleView(discord.ui.View):
     
@@ -25,7 +25,7 @@ class SimpleView(discord.ui.View):
             self.foo = True
             # self.stop()
         else:
-            await interaction.response.send_message("Sorry! You were too late!", ephemeral=True)
+            await interaction.response.send_message("Sorry! this was already grabbed", ephemeral=True)
             self.stop
             
     
@@ -36,29 +36,33 @@ class SimpleView(discord.ui.View):
 
 # Define a cog class that inherits from commands.Cog
 class drop(commands.Cog):
+    
     def __init__(self, bot):
         self.bot = bot
 
-    # Event listener for when the bot is ready
-    # @commands.Cog.listener()
-    # async def on_ready(self):
-    #     print(f'Logged in as {self.bot.user.name}')
 
-    # Command that responds with "Pong" when the bot receives a "!ping" command
     @commands.command()
     @commands.has_any_role('Admin','Moderator')
-    async def drop(self, ctx, amount= None):
-        if(amount == "50" or amount == "100" or amount == "nitro"):
-            channel = self.bot.get_channel(int(os.environ['DROP_CHANNEL']))
+    async def drop(self, ctx, amount = None):
+        if(amount in ("50","100","nitro")):
+            
+            #Connects to firebase firestore to get channel
+            db_server = db.collection("servers").document(str(ctx.message.guild.id))
+            db_channel = db_server.get().to_dict()
+            db_channel = db_channel["drop_channel"]
+            
+            channel = self.bot.get_channel(int(db_channel))
             file = discord.File(f'./image/{amount}.jpg')
-            embed = discord.Embed()
+            embed = discord.Embed(
+                title=f"Someone dropped a {amount}!"
+            )
             embed.set_image(url=f"attachment://{amount}.jpg")
-            embed.set_footer(text="Grab it before someone else does!")
-            view = SimpleView(timeout=3)
+            embed.set_footer(text="Grab it!")
+            view = SimpleView(timeout=10)
             
             message = await channel.send('**Hala nahulog!**', embed=embed, file=file, view=view)
-            # message = await channel.send(view=view)
             view.message = message
+            
             
             await view.wait()
             await view.disable_all_items()

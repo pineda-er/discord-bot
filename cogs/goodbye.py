@@ -7,6 +7,8 @@ from PIL import ImageFont
 from PIL import ImageDraw
 from PIL import ImageOps
 from discord.ext import commands
+from firebase_admin import firestore
+db = firestore.client()
 
 class goodbye(commands.Cog):
     def __init__(self, bot):
@@ -15,6 +17,12 @@ class goodbye(commands.Cog):
     # Event listener for when the bot is ready
     @commands.Cog.listener()
     async def on_member_remove(self, member):
+        
+        #Connects to firebase firestore to get channel
+        db_server = db.collection("servers").document(str(member.guild.id))
+        db_channel = db_server.get().to_dict()
+        db_channel = db_channel["goodbye_channel"]
+        
         my_image = Image.open("./image/goodbye.png")
 
         av = member.avatar.replace(size=128)
@@ -73,7 +81,7 @@ class goodbye(commands.Cog):
     )
         embed.set_footer(text="Didn't HAve Fun! ;(")
         embed.set_image(url="attachment://profile.png")
-        channel = self.bot.get_channel(int(os.environ['GOODBYE_CHANNEL']))
+        channel = self.bot.get_channel(int(db_channel))
         await channel.send(f'Goodbye, {member.mention}', embed=embed, file=file)
 
 # Function to add this cog to the bot
