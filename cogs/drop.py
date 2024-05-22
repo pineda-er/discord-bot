@@ -1,8 +1,11 @@
 import discord
 from discord.ext import commands
 from firebase_admin import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+
 db = firestore.client()
 
+dropper = None
 class SimpleView(discord.ui.View):
     
     foo : bool = None
@@ -16,12 +19,17 @@ class SimpleView(discord.ui.View):
         # await self.message.channel.send("Timedout")
         await self.disable_all_items()
     
-    @discord.ui.button(label="💸 Grab", 
+    @discord.ui.button(label="🫳 Grab", 
                        style=discord.ButtonStyle.success)
-    async def hello(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def response(self, interaction: discord.Interaction, button: discord.ui.Button):
         if(self.foo != True):
             
-            await interaction.response.send_message(f"Congratulations {interaction.user.mention}, you got it!")
+            embed = discord.Embed(
+                description=f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n DM {dropper} to claim',
+                colour= 0x008000
+            )
+            await interaction.response.send_message(embed=embed)
+
             self.foo = True
             # self.stop()
         else:
@@ -44,11 +52,20 @@ class Drop(commands.Cog):
     async def on_ready(self):
         print("Drop ready")
 
-    @commands.command()
+    @commands.hybrid_group(name="drop", description="Sends an item that a member can grab/claim")
     @commands.has_any_role('Admin','Moderator')
     async def drop(self, ctx, item = None):
         """Sends an item that a member can grab/claim"""
-        if(item in ("50","100","nitro")):
+        # if(item in ("50","100","nitro")):
+        if(item):
+            
+            docs = db.collection("servers").document(str(ctx.message.guild.id)).collection("drop_items").where(filter=FieldFilter("name", "==", item)).stream()
+
+            for doc in docs:
+                print(f"{doc.id} => {doc.to_dict()}")
+                drop_item = doc.to_dict()
+                
+                print(drop_item)
             
             #Connects to firebase firestore to get channel
             db_server = db.collection("servers").document(str(ctx.message.guild.id))
@@ -56,18 +73,23 @@ class Drop(commands.Cog):
             db_channel = db_channel["drop_channel"]
             
             channel = self.bot.get_channel(int(db_channel))
-            file = discord.File(f'./image/{item}.jpg')
+            # file = discord.File(f'./image/{item}.jpg')
+            print(drop_item["image"])
+            file = drop_item["image"]
             embed = discord.Embed(
-                title=f"Someone dropped a {item}!"
+                title=f"Someone dropped a {drop_item["name"]}!"
             )
-            embed.set_image(url=f"attachment://{item}.jpg")
+            embed.set_image(url=file)
             embed.set_footer(text="Grab it!")
             view = SimpleView(timeout=10)
             
-            message = await channel.send('**Hala nahulog!**', embed=embed, file=file, view=view)
+            message = await channel.send('**Hala nahulog!**', embed=embed, view=view)
             view.message = message
             
+            global dropper 
+            dropper = ctx.message.author.mention
             
+            await ctx.message.add_reaction('✅')
             await view.wait()
             await view.disable_all_items()
         
@@ -78,9 +100,67 @@ class Drop(commands.Cog):
             )
             await ctx.send(embed=embed)
             
+    @drop.command(name='add', description='Add item to available drops')
+    async def add(self, ctx, item_name: str, image: discord.Attachment):
+
+        print(image.url)
+        print(ctx.message.guild.id)
+        db_server = db.collection("servers").document(str(ctx.message.guild.id))
+        db_drop_items = db_server.collection("drop_items")
+        db_drop_items.add({"name" : item_name, "image": image.url})
+        
+        embed = discord.Embed(
+                description=f"** ✅ Successfully added `{item_name}` to drop items**",
+                colour= 0x008000
+            )
+        await ctx.send(embed=embed)
+        
+    @drop.command(name='remove', description='Remove item from available drops')
+    async def remove(self, ctx, item_name):
+
+        print(ctx.message.guild.id)
+        db_server = db.collection("servers").document(str(ctx.message.guild.id))
+        db_drop_items = db_server.collection("drop_items")
+        db_remove_item = db_drop_items.where(filter=FieldFilter("name", "==", item_name)).stream()
+
+        for doc in db_remove_item:
+            print(doc.id)
+            db_drop_items.document(f'{doc.id}').delete()
+        
+        embed = discord.Embed(
+                description=f"** ✅ Successfully removed `{item_name}` from drop items**",
+                colour= 0x008000
+            )
+        await ctx.send(embed=embed)
+        
+    @drop.command(name='check', description='Checks available drop items')
+    async def check(self, ctx):
+        items = []
+
+        print(ctx.message.guild.id)
+        db_server = db.collection("servers").document(str(ctx.message.guild.id))
+        db_drop_items = db_server.collection("drop_items")
+        db_drop_items = db_drop_items.stream()
+        
+        for doc in db_drop_items:
+            print(doc.id)
+            drop_item = doc.to_dict()
+            print(drop_item)
+            items.append(drop_item["name"])
+            print(items)
+            
+        nameslist = '\n'.join(items)
+            
+        embed = discord.Embed(
+            colour=0x6ac5fe
+        )
+        embed.add_field(name = 'Available drop items', value = nameslist)
+        await ctx.send(embed=embed)
+            
+            
     @drop.error
     async def say_error(ctx, error):
-        if isinstance(error, commands.CommandError):
+        if isinstance(error, (commands.MissingRequiredArgument, commands.CommandError, commands.errors)):
                 print(error)
 
 # Function to add this cog to the bot
