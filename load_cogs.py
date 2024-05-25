@@ -6,10 +6,13 @@ from dotenv import load_dotenv
 from firebase_config import firebase_config
 import firebase_admin
 from firebase_admin import credentials
+from firebase_admin import storage
 from pretty_help import EmojiMenu, PrettyHelp
 
 cred = credentials.Certificate(firebase_config)
-firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred, {
+    'storageBucket' : 'discordbot-1113e.appspot.com'
+})
 
 
 # Set up intents

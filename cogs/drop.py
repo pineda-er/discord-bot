@@ -1,9 +1,12 @@
 import discord
 from discord.ext import commands
 from firebase_admin import firestore
+from firebase_admin import storage
 from google.cloud.firestore_v1.base_query import FieldFilter
+import urllib.request
 
 db = firestore.client()
+bucket = storage.bucket()
 
 dropper = None
 class SimpleView(discord.ui.View):
@@ -95,25 +98,48 @@ class Drop(commands.Cog):
         
         elif(item is None):
             embed = discord.Embed(
-                description='**❌ Input `50` or `100` or `nitro`**',
+                description='**❌ check available items using /drop check**',
                 colour= 0xFF0000
             )
             await ctx.send(embed=embed)
             
     @drop.command(name='add', description='Add item to available drops')
     async def add(self, ctx, item_name: str, image: discord.Attachment):
-
-        print(image.url)
-        print(ctx.message.guild.id)
-        db_server = db.collection("servers").document(str(ctx.message.guild.id))
-        db_drop_items = db_server.collection("drop_items")
-        db_drop_items.add({"name" : item_name, "image": image.url})
         
         embed = discord.Embed(
                 description=f"** ✅ Successfully added `{item_name}` to drop items**",
                 colour= 0x008000
             )
         await ctx.send(embed=embed)
+        
+        imgURL = image.url
+        
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('User-Agent', 'Chrome')]
+        urllib.request.install_opener(opener)
+        urllib.request.urlretrieve(imgURL, "./image/drop_item.png")
+        
+        fileName = f"{ctx.message.guild.id}/drop_item/{image.filename}"
+        filePath = "./image/drop_item.png"
+        blob = bucket.blob(fileName)
+        blob.upload_from_filename(filePath)
+        blob.upload_from_string
+            
+        blob.make_public()
+            
+        print(blob.public_url)
+
+        print(image.url)
+        print(ctx.message.guild.id)
+        db_server = db.collection("servers").document(str(ctx.message.guild.id))
+        db_drop_items = db_server.collection("drop_items")
+        db_drop_items.add({"name" : item_name, "image": blob.public_url})
+        
+        # embed = discord.Embed(
+        #         description=f"** ✅ Successfully added `{item_name}` to drop items**",
+        #         colour= 0x008000
+        #     )
+        # await ctx.send(embed=embed)
         
     @drop.command(name='remove', description='Remove item from available drops')
     async def remove(self, ctx, item_name):
