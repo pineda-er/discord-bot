@@ -26,7 +26,7 @@ bot.help_command = PrettyHelp(ephemeral=True, color=discord.Colour.green())
 
 @bot.event
 async def on_ready():
-    print('We Have logged in as {0.user}'.format(bot))
+    print('Logged in as {0.user}'.format(bot))
     await bot.tree.sync()
     
 @bot.event

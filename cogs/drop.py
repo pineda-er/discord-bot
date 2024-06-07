@@ -65,10 +65,10 @@ class Drop(commands.Cog):
             docs = db.collection("servers").document(str(ctx.message.guild.id)).collection("drop_items").where(filter=FieldFilter("name", "==", item)).stream()
 
             for doc in docs:
-                print(f"{doc.id} => {doc.to_dict()}")
+                # print(f"{doc.id} => {doc.to_dict()}")
                 drop_item = doc.to_dict()
                 
-                print(drop_item)
+                # print(drop_item)
             
             #Connects to firebase firestore to get channel
             db_server = db.collection("servers").document(str(ctx.message.guild.id))
@@ -77,7 +77,7 @@ class Drop(commands.Cog):
             
             channel = self.bot.get_channel(int(db_channel))
             # file = discord.File(f'./image/{item}.jpg')
-            print(drop_item["image"])
+            # print(drop_item["image"])
             file = drop_item["image"]
             embed = discord.Embed(
                 title=f"Someone dropped a {drop_item["name"]}!"
@@ -93,8 +93,11 @@ class Drop(commands.Cog):
             dropper = ctx.message.author.mention
             
             await ctx.message.add_reaction('✅')
+            print(f"{ctx.message.author.name} dropped {drop_item["name"]}")
             await view.wait()
             await view.disable_all_items()
+            
+            
         
         elif(item is None):
             embed = discord.Embed(
@@ -127,13 +130,15 @@ class Drop(commands.Cog):
             
         blob.make_public()
             
-        print(blob.public_url)
-
-        print(image.url)
-        print(ctx.message.guild.id)
+        # print(blob.public_url)
+        # print(image.url)
+        # print(ctx.message.guild.id)
+        
         db_server = db.collection("servers").document(str(ctx.message.guild.id))
         db_drop_items = db_server.collection("drop_items")
         db_drop_items.add({"name" : item_name, "image": blob.public_url})
+        
+        print(f"{item_name} has been added to drop list by {ctx.message.author.name}")
         
         # embed = discord.Embed(
         #         description=f"** ✅ Successfully added `{item_name}` to drop items**",
@@ -144,13 +149,13 @@ class Drop(commands.Cog):
     @drop.command(name='remove', description='Remove item from available drops')
     async def remove(self, ctx, item_name):
 
-        print(ctx.message.guild.id)
+        # print(ctx.message.guild.id)
         db_server = db.collection("servers").document(str(ctx.message.guild.id))
         db_drop_items = db_server.collection("drop_items")
         db_remove_item = db_drop_items.where(filter=FieldFilter("name", "==", item_name)).stream()
 
         for doc in db_remove_item:
-            print(doc.id)
+            # print(doc.id)
             db_drop_items.document(f'{doc.id}').delete()
         
         embed = discord.Embed(
@@ -158,22 +163,23 @@ class Drop(commands.Cog):
                 colour= 0x008000
             )
         await ctx.send(embed=embed)
+        print(f"{item_name} has been removed from drop list by {ctx.message.author.name}")
         
     @drop.command(name='check', description='Checks available drop items')
     async def check(self, ctx):
         items = []
 
-        print(ctx.message.guild.id)
+        # print(ctx.message.guild.id)
         db_server = db.collection("servers").document(str(ctx.message.guild.id))
         db_drop_items = db_server.collection("drop_items")
         db_drop_items = db_drop_items.stream()
         
         for doc in db_drop_items:
-            print(doc.id)
+            # print(doc.id)
             drop_item = doc.to_dict()
-            print(drop_item)
+            # print(drop_item)
             items.append(drop_item["name"])
-            print(items)
+            # print(items)
             
         nameslist = '\n'.join(items)
             
