@@ -56,8 +56,8 @@ class Drop(commands.Cog):
         print("Drop ready")
 
     @commands.hybrid_group(name="drop", description="Sends an item that a member can grab/claim")
-    @commands.has_any_role('Admin','Moderator')
-    async def drop(self, ctx, item = None):
+    @commands.has_any_role('Admin','Moderator','Sponsor')
+    async def drop(self, ctx, *, item = None):
         """Sends an item that a member can grab/claim"""
         # if(item in ("50","100","nitro")):
         if(item):
