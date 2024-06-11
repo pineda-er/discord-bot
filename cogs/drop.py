@@ -34,7 +34,7 @@ class SimpleView(discord.ui.View):
             await interaction.response.send_message(embed=embed)
 
             self.foo = True
-            # self.stop()
+            self.stop()
         else:
             await interaction.response.send_message("Sorry! this was already grabbed", ephemeral=True)
             self.stop
