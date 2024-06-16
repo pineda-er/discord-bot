@@ -9,6 +9,8 @@ db = firestore.client()
 bucket = storage.bucket()
 
 dropper = None
+drop_restriction = "off"
+drop_timeout = 60
 class SimpleView(discord.ui.View):
     
     foo : bool = None
@@ -25,20 +27,30 @@ class SimpleView(discord.ui.View):
     @discord.ui.button(label="🫳 Grab", 
                        style=discord.ButtonStyle.success)
     async def response(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if(self.foo != True):
-            
-            embed = discord.Embed(
-                description=f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n DM {dropper} to claim',
-                colour= 0x008000
-            )
-            await interaction.response.send_message(embed=embed)
-
-            self.foo = True
-            self.stop()
+        # print(interaction.user.roles)
+        if (drop_restriction == "on"):
+            roles = ["10 — Novice",
+                "Server VIP","Sponsor"]
         else:
-            await interaction.response.send_message("Sorry! this was already grabbed", ephemeral=True)
-            self.stop
+            roles = ["@everyone"]
             
+        if any(role.name in roles for role in interaction.user.roles):
+            if(self.foo != True):
+                self.foo = True
+                embed = discord.Embed(
+                    description=f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n DM {dropper} to claim',
+                    colour= 0x008000
+            )
+                await interaction.response.send_message(embed=embed)
+
+                # self.stop()
+            else:
+                await interaction.response.send_message("Sorry! item was already grabbed", ephemeral=True)
+                # self.stop()
+        else: 
+            await interaction.response.send_message("Sorry! Only members Level 10 and above can grab", ephemeral=True)
+                
+                
     
     # @hello.error
     # async def say_error(self, interaction: discord.Interaction):
@@ -57,9 +69,12 @@ class Drop(commands.Cog):
 
     @commands.hybrid_group(name="drop", description="Sends an item that a member can grab/claim")
     @commands.has_any_role('Admin','Moderator','Sponsor')
-    async def drop(self, ctx, *, item = None):
+    async def drop(self, ctx, *, item : str):
         """Sends an item that a member can grab/claim"""
         # if(item in ("50","100","nitro")):
+        # print(item)
+        item = item.lower()
+        # print(item)
         if(item):
             
             docs = db.collection("servers").document(str(ctx.message.guild.id)).collection("drop_items").where(filter=FieldFilter("name", "==", item)).stream()
@@ -72,8 +87,10 @@ class Drop(commands.Cog):
             
             #Connects to firebase firestore to get channel
             db_server = db.collection("servers").document(str(ctx.message.guild.id))
-            db_channel = db_server.get().to_dict()
-            db_channel = db_channel["drop_channel"]
+            db_data = db_server.get().to_dict()
+            db_channel = db_data["drop_channel"]
+            db_drop_restriction = db_data["drop_restriction"]
+            db_drop_timeout = db_data["drop_timeout"]
             
             channel = self.bot.get_channel(int(db_channel))
             # file = discord.File(f'./image/{item}.jpg')
@@ -84,13 +101,16 @@ class Drop(commands.Cog):
             )
             embed.set_image(url=file)
             embed.set_footer(text="Grab it!")
-            view = SimpleView(timeout=10)
+            view = SimpleView(timeout=db_drop_timeout)
             
             message = await channel.send('**Hala nahulog!**', embed=embed, view=view)
             view.message = message
             
             global dropper 
             dropper = ctx.message.author.mention
+            
+            global drop_restriction
+            drop_restriction = db_drop_restriction
             
             await ctx.message.add_reaction('✅')
             print(f"{ctx.message.author.name} dropped {drop_item["name"]}")
@@ -108,6 +128,9 @@ class Drop(commands.Cog):
             
     @drop.command(name='add', description='Add item to available drops')
     async def add(self, ctx, item_name: str, image: discord.Attachment):
+        item_name = item_name.lower()
+        
+        # print(image.content_type)
         
         embed = discord.Embed(
                 description=f"** ✅ Successfully added `{item_name}` to drop items**",
@@ -133,7 +156,6 @@ class Drop(commands.Cog):
         # print(blob.public_url)
         # print(image.url)
         # print(ctx.message.guild.id)
-        
         db_server = db.collection("servers").document(str(ctx.message.guild.id))
         db_drop_items = db_server.collection("drop_items")
         db_drop_items.add({"name" : item_name, "image": blob.public_url})
@@ -181,7 +203,7 @@ class Drop(commands.Cog):
             items.append(drop_item["name"])
             # print(items)
             
-        nameslist = '\n'.join(items)
+        nameslist = '\n'.join(sorted(items))
             
         embed = discord.Embed(
             colour=0x6ac5fe
@@ -189,7 +211,49 @@ class Drop(commands.Cog):
         embed.add_field(name = 'Available drop items', value = nameslist)
         await ctx.send(embed=embed)
             
+    @drop.command(name="restriction", description="ON/OFF member role restriction only who can grab/claim")
+    async def restriction(self, ctx, status: str):
+        status = status.lower()
+        if(status in ("on","off")): 
+            db_server = db.collection("servers").document(str(ctx.message.guild.id))
+            db_server.set({"drop_restriction" : status}, merge=True)
             
+            embed = discord.Embed(
+                description=f"** ✅ Successfully set role restriction to {status.upper()}**",
+                colour= 0x008000
+            )
+            await ctx.send(embed=embed)
+            
+        else:
+             embed = discord.Embed(
+                description=f"** ❌ Specify status ON or OFF **",
+                colour= 0xFF0000
+            )
+             await ctx.send(embed=embed)
+             
+    @drop.command(name="timeout", description="set drop timeout on grab button. Default: 60 seconds")
+    async def restriction(self, ctx, seconds: int):
+        # status = status.lower()
+        if(seconds): 
+            db_server = db.collection("servers").document(str(ctx.message.guild.id))
+            db_server.set({"drop_timeout" : seconds}, merge=True)
+            
+            embed = discord.Embed(
+                description=f"** ✅ Successfully set timeout to {seconds} seconds**",
+                colour= 0x008000
+            )
+            await ctx.send(embed=embed)
+            
+        else:
+             embed = discord.Embed(
+                description=f"** ❌ Specify timeout in seconds**",
+                colour= 0xFF0000
+            )
+             await ctx.send(embed=embed)
+            
+            
+        
+        
     @drop.error
     async def say_error(ctx, error):
         if isinstance(error, (commands.MissingRequiredArgument, commands.CommandError, commands.errors)):
