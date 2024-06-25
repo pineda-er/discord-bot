@@ -35,22 +35,25 @@ class SimpleView(discord.ui.View):
         else:
             roles = ["@everyone"]
             
-        if any(role.name in roles for role in interaction.user.roles):
-            if(self.foo != True):
-                self.foo = True
-                embed = discord.Embed(
-                    description=f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n DM {dropper} to claim',
-                    colour= 0x008000
-            )
-                await interaction.response.send_message(embed=embed)
+        # print(interaction.user.roles)
+        if not 'Ex-Convict' in str(interaction.user.roles):
+            if any(role.name in roles for role in interaction.user.roles):
+                if(self.foo != True):
+                    self.foo = True
+                    embed = discord.Embed(
+                        description=f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n DM {dropper} to claim',
+                        colour= 0x008000
+                )
+                    await interaction.response.send_message(embed=embed)
 
-                # self.stop()
-            else:
-                await interaction.response.send_message("Sorry! item was already grabbed", ephemeral=True)
-                # self.stop()
-        else: 
-            await interaction.response.send_message("Sorry! Only members Level 5 and above can grab", ephemeral=True)
+                    # self.stop()
+                else:
+                    await interaction.response.send_message("Sorry! item was already grabbed", ephemeral=True)
+                    # self.stop()
+            else: 
+                await interaction.response.send_message("Sorry! Only members Level 5 and above can grab", ephemeral=True)
                 
+        else: await interaction.response.send_message("Sorry! You are an Ex-Convict, you cannot grab items", ephemeral=True)
                 
     
     # @hello.error

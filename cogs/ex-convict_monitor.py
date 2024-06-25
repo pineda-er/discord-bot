@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from firebase_admin import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 import datetime
 db = firestore.client()
 from typing import Callable, Optional
@@ -88,7 +89,7 @@ class Monitor(commands.Cog):
         
     
     @app_commands.command(name="monitor_check", description="Check ex-convict list/status")
-    async def monitor(self, interaction: discord.Interaction):
+    async def monitor_check(self, interaction: discord.Interaction):
         items = []
         
         db_server = db.collection("servers").document(str(interaction.guild_id))
@@ -126,6 +127,41 @@ class Monitor(commands.Cog):
             return emb, n
 
         await Pagination(interaction, get_page).navegate()
+        
+    @app_commands.command(name="monitor_check_member", description="Check ex-convict list/status")
+    async def monitor_check_member(self, interaction: discord.Interaction, member: discord.Member):
+        items = []
+        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_ex_convicts = db_server.collection("ex_convict")
+        db_ex_convicts = db_ex_convicts.where(filter=FieldFilter("name", "==", member.name)).stream()
+        
+        for doc in db_ex_convicts:
+            # print(doc.id)
+            ex_convicts = doc.to_dict()
+            # print(ex_convicts)
+            date = datetime.datetime.fromtimestamp(ex_convicts["convict_until"].timestamp())
+            # print(date)
+            # print(ex_convicts["convict_until"].timestamp())
+            date = int(ex_convicts["convict_until"].timestamp())
+            items.append(f'{ex_convicts["mention"]} \n Until: <t:{str(date)}:f>')
+            # print(items)
+        
+        if not items:
+            items.append('Member not found in Ex-Convict List')
+            title = 'Member not found'
+        else:
+            title = 'Ex-Convict List'
+            
+        nameslist = '\n \n '.join(sorted(items))
+            
+        embed = discord.Embed(
+            colour=0x6ac5fe,
+            title= title
+        )
+        embed.add_field(name = ' ', value = nameslist)
+        await interaction.response.send_message(embed=embed)
+        
+        
 
 # Function to add this cog to the bot
 async def setup(bot):

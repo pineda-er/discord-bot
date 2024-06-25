@@ -45,12 +45,14 @@ async def on_command_error(ctx, error):
         
 @bot.event
 async def on_member_update(before, after):
-    yourServer = bot.get_guild(before.guild.id)
-    # print(f'before {before.guild}')
-    # print(f'after {after.guild.id}')
+    yourServer = bot.get_guild(int(before.guild.id))
+    # print(f'before {before.roles}')
+    # print(f'after {after.roles}')
     
     if 'Server Booster' in str(after.roles):
+        # print('inside')
         if not 'Server Booster' in str(before.roles):
+            # print('inside2')
             await after.add_roles(discord.utils.get(yourServer.roles, name="Server VIP"))
             print(f' INFO: {after.name} has boosted the server')
             
@@ -62,6 +64,9 @@ async def on_member_update(before, after):
     if 'Jail Inmate' in str(before.roles):
         if not 'Jail Inmate' in str(after.roles):
             await after.add_roles(discord.utils.get(yourServer.roles, name="Ex-Convict"))
+            
+    if 'Ex-Convict' in str(after.roles):
+        if not 'Ex-Convict' in str(before.roles):
             print(f' INFO: {after.name} became an ex-convict')
             end_date = datetime.now()
             end_date = end_date.astimezone(pytz.timezone('Asia/Manila'))
