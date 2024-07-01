@@ -16,16 +16,16 @@ class Pagination(discord.ui.View):
         self.index = 1
         super().__init__(timeout=100)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user == self.interaction.user:
-            return True
-        else:
-            emb = discord.Embed(
-                description=f"Only the author of the command can perform this action.",
-                color=16711680
-            )
-            await interaction.response.send_message(embed=emb, ephemeral=True)
-            return False
+    # async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    #     if interaction.user == self.interaction.user:
+    #         return True
+    #     else:
+    #         emb = discord.Embed(
+    #             description=f"Only the author of the command can perform this action.",
+    #             color=16711680
+    #         )
+    #         await interaction.response.send_message(embed=emb, ephemeral=True)
+    #         return False
 
     async def navegate(self):
         emb, self.total_pages = await self.get_page(self.index)
@@ -160,6 +160,20 @@ class Monitor(commands.Cog):
         )
         embed.add_field(name = ' ', value = nameslist)
         await interaction.response.send_message(embed=embed)
+    
+    @app_commands.command(name="monitor_remove_member", description="remove member from ex-convict list")
+    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
+    async def monitor_remove_member(self, interaction: discord.Interaction, member: discord.Member):
+        if 'Ex-Convict' in str(member.roles):
+            await member.remove_roles(discord.utils.get(member.roles, name="Ex-Convict"))
+            
+            embed = discord.Embed(
+                colour=0x6ac5fe,
+                title= 'Member removed'
+            )
+            embed.add_field(name = ' ', value = f'{member.mention} has been removed as Ex-Convict')
+            await interaction.response.send_message(embed=embed)
+        
         
         
 

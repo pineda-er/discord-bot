@@ -59,6 +59,10 @@ async def on_member_update(before, after):
     if 'Server Booster' in str(before.roles):
         if not 'Server Booster' in str(after.roles):
             await after.remove_roles(discord.utils.get(yourServer.roles, name="Server VIP"))
+            
+            role_ids = [1226865689755648000,1226866368201363587,1226866556823277608,1226866752516784128,1226866842417758238]
+            roles = tuple(discord.utils.get(yourServer.roles, id=n) for n in role_ids)
+            await after.remove_roles(*roles)
             print(f' INFO: {after.name} has stopped boosting the server')
             
     if 'Jail Inmate' in str(before.roles):
@@ -87,7 +91,7 @@ async def on_member_update(before, after):
             
 @tasks.loop(hours=1)
 async def remove_ex_convict():
-    # print("hjghjghj")
+    # print("Checking...")
     items = []
     db_server = db.collection("servers").document(str(1199642321109663754))
     db_ex_convicts = db_server.collection("ex_convict")
@@ -103,6 +107,7 @@ async def remove_ex_convict():
         # print(ex_convicts["convict_until"].timestamp())
         end_date = int(ex_convicts["convict_until"].timestamp())
         date_now = datetime.now()
+        date_now = date_now.astimezone(pytz.timezone('Asia/Manila'))
         date_now = int(datetime.timestamp(date_now))
         # print(f'{end_date} > {date_now}')
         # print(ex_convicts["guild_id"])
