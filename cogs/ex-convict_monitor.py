@@ -4,8 +4,10 @@ from discord import app_commands
 from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 import datetime
+from datetime import timedelta, datetime as datetimes
 db = firestore.client()
 from typing import Callable, Optional
+import pytz
 
 
 class Pagination(discord.ui.View):
@@ -173,6 +175,62 @@ class Monitor(commands.Cog):
             )
             embed.add_field(name = ' ', value = f'{member.mention} has been removed as Ex-Convict')
             await interaction.response.send_message(embed=embed)
+            
+    @app_commands.command(name="monitor_remove_expired_members", description="remove members from ex-convict list")
+    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
+    async def monitor_remove_expired_members(self, interaction: discord.Interaction):
+        print("shits")
+        
+        items = int(0)
+        date_now = datetimes.now()
+        date_now = date_now.astimezone(pytz.timezone('Asia/Manila'))
+        date_now = int(datetimes.timestamp(date_now))
+        # print(date_now)
+        
+        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_ex_convicts = db_server.collection("ex_convict")
+        db_ex_convicts = db_ex_convicts.stream()
+        
+        for doc in db_ex_convicts:
+            # print(doc.id)
+            ex_convicts = doc.to_dict()
+            # print(int(ex_convicts["convict_until"].timestamp()))
+            end_date = int(ex_convicts["convict_until"].timestamp())
+            # print(end_date)
+            if end_date < date_now:
+                member = discord.utils.get(interaction.guild.members, name=ex_convicts["name"])
+                print(member)
+                if member == None:
+                    db_server = db.collection("servers").document(str(interaction.guild.id))
+                    db_ex_convicts = db_server.collection("ex_convict").document(str(doc.id)).delete()
+                else:
+                    await member.remove_roles(discord.utils.get(member.roles, name="Ex-Convict"))
+                
+                items = items + 1
+                
+        embed = discord.Embed(
+                colour=0x6ac5fe,
+                title= 'Members removed'
+            )
+        embed.add_field(name = ' ', value = f'{items} members have been removed as Ex-Convict')
+        await interaction.response.send_message(embed=embed)
+                
+
+    
+    @app_commands.command(name="monitor_add_member", description="add member from ex-convict list")
+    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
+    async def monitor_add_member(self, interaction: discord.Interaction, member: discord.Member):
+        if not 'Ex-Convict' in str(member.roles):
+            await member.add_roles(discord.utils.get(member.roles, name="Ex-Convict"))
+            
+            embed = discord.Embed(
+                colour=0x6ac5fe,
+                title= 'Member added'
+            )
+            embed.add_field(name = ' ', value = f'{member.mention} has been added as Ex-Convict')
+            await interaction.response.send_message(embed=embed)
+            
+    
         
         
         

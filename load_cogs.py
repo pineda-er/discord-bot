@@ -74,7 +74,7 @@ async def on_member_update(before, after):
             print(f' INFO: {after.name} became an ex-convict')
             end_date = datetime.now()
             end_date = end_date.astimezone(pytz.timezone('Asia/Manila'))
-            end_date = end_date + timedelta(days=5)
+            end_date = end_date + timedelta(days=3)
             # print(end_date)
             
             db_server = db.collection("servers").document(str(before.guild.id))
@@ -88,6 +88,19 @@ async def on_member_update(before, after):
             
             db_server = db.collection("servers").document(str(before.guild.id))
             db_ex_convicts = db_server.collection("ex_convict").document(str(before.id)).delete()
+    
+    if '100 Moon Shards' in str(after.roles):
+        # print('inside')
+        if not '100 Moon Shards' in str(before.roles):
+            # print('inside2')
+            await after.remove_roles(discord.utils.get(yourServer.roles, name="100 Moon Shards"))
+            db_server = db.collection("servers").document(str(before.guild.id))
+            db_currency = db_server.collection("currency").document(str(before.id))
+            db_currency_receiver = db_currency.get().to_dict()
+            db_currency_receiver_balance = db_currency_receiver["balance"]
+            db_currency.update({"balance": db_currency_receiver_balance + 100})
+                                                                    
+            print(f' INFO: {after.name} got 100 Moon Shards')
             
 @tasks.loop(hours=1)
 async def remove_ex_convict():
@@ -102,7 +115,7 @@ async def remove_ex_convict():
         # print(doc.id)
         ex_convicts = doc.to_dict()
         # print(ex_convicts)
-        end_date = datetime.fromtimestamp(ex_convicts["convict_until"].timestamp())
+        # end_date = datetime.fromtimestamp(ex_convicts["convict_until"].timestamp())
         # print(end_date)
         # print(ex_convicts["convict_until"].timestamp())
         end_date = int(ex_convicts["convict_until"].timestamp())
