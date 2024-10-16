@@ -72,7 +72,7 @@ class Drop(commands.Cog):
         print("Drop ready")
 
     @commands.hybrid_group(name="drop", description="Sends an item that a member can grab/claim")
-    @commands.has_any_role('AMS','Sponsor')
+    @commands.has_any_role('AMS')
     async def drop(self, ctx, *, item : discord.Member | str):
         """Sends an item that a member can grab/claim"""
         # if(item in ("50","100","nitro")):

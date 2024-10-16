@@ -95,10 +95,12 @@ async def on_member_update(before, after):
             # print('inside2')
             await after.remove_roles(discord.utils.get(yourServer.roles, name="100 Moon Shards"))
             db_server = db.collection("servers").document(str(before.guild.id))
+            db_data = db_server.get().to_dict()
             db_currency = db_server.collection("currency").document(str(before.id))
             db_currency_receiver = db_currency.get().to_dict()
             db_currency_receiver_balance = db_currency_receiver["balance"]
             db_currency.update({"balance": db_currency_receiver_balance + 100})
+            db_server.set({"total_moonshards" : db_data["total_moonshards"] + 100}, merge=True)
                                                                     
             print(f' INFO: {after.name} got 100 Moon Shards')
             
