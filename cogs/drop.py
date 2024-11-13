@@ -134,7 +134,7 @@ class Drop(commands.Cog):
             # drop_item_name = drop_item["name"]
             # drop_item_name = str(drop_item_name)
             # drop_item_name = drop_item_name.upper()
-            channel = self.bot.get_channel(int(db_channel))
+            channel = self.bot.get_channel(int(db_channel)) 
             
             embed = discord.Embed(
                 title=f"Someone dropped {item.display_name} !"

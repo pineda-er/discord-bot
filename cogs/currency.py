@@ -367,7 +367,44 @@ class Currency(commands.Cog):
         embed.set_footer(text="TIP: you can check shop items using /ms shop")
         await interaction.response.send_message(embed=embed)
         
-    
+        
+    @app_commands.checks.has_any_role('Admin','Sub-Server Tech')
+    @group.command(name="mass-give", description="AMS only command")
+    async def mass_give(self, interaction: discord.Interaction, role: discord.Role, amount: int):
+        items=[]
+        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_data = db_server.get().to_dict()
+        db_currency = db_server.collection("currency")
+        total_members = 0
+        total_amount = 0
+        await interaction.response.send_message("<a:Infinity1x1:1305990991098150935>")
+        # await interaction.edit_original_response(content="text")
+        for member in role.members:
+            
+            db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
+            db_currency_receiver_account = db_server.collection("currency").document(str(member.id))
+            total_members= total_members + 1
+            total_amount = total_amount + amount
+            
+            if len(db_currency_receiver):
+                for doc in db_currency_receiver:
+                    r_currency = doc.to_dict()
+                    db_currency_receiver_account.update({"balance": r_currency["balance"] + amount})
+            
+            else:
+                db_currency_receiver_account.set({"mention": member.mention,"userID": member.id, "balance": amount}, merge=True)
+            
+        
+        db_server.set({"total_moonshards" : db_data["total_moonshards"] + total_amount}, merge=True)
+        colour = 0x77dd77
+        embed = discord.Embed(
+            colour=colour,
+            title = "",
+            description=f"✅ **{total_members:,}** members with {role.mention} role have been given **{amount:,}** Moon Shards"
+        )
+        await interaction.edit_original_response(embed=embed)
+                
+                
     @app_commands.checks.has_any_role('Admin','AMS')
     @group.command(name="add-shop-item", description="AMS only command")
     async def add_shop_item(self, interaction: discord.Interaction, item_name: str, description: str, amount: int, role: typing.Optional[discord.Role]):
@@ -849,6 +886,47 @@ class Currency(commands.Cog):
         embed.add_field(name = ' ', value = nameslist)
         embed.set_footer(text="TIP: you can check shop items using /ms shop")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+    @app_commands.checks.has_any_role('Admin','Sub-Server Tech')
+    @group.command(name="mass-remove", description="AMS only command")
+    async def mass_remove(self, interaction: discord.Interaction, role: discord.Role, amount: int):
+        items=[]
+        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_data = db_server.get().to_dict()
+        db_currency = db_server.collection("currency")
+        total_members = 0
+        total_amount = 0
+        await interaction.response.send_message("<a:Infinity1x1:1305990991098150935>")
+        # await interaction.edit_original_response(content="text")
+        for member in role.members:
+            
+            db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
+            db_currency_receiver_account = db_server.collection("currency").document(str(member.id))
+            total_members= total_members + 1
+            total_amount = total_amount + amount
+            
+            if len(db_currency_receiver):
+                for doc in db_currency_receiver:
+                    r_currency = doc.to_dict()
+                    r_currency_balance = r_currency["balance"]
+                    r_currency_balance = r_currency["balance"] - amount
+                    if r_currency_balance >= 0:
+                        db_currency_receiver_account.update({"balance": r_currency_balance})
+                    else:
+                        db_currency_receiver_account.update({"balance": 0})
+            
+            # else:
+            #     db_currency_receiver_account.set({"mention": member.mention,"userID": member.id, "balance": amount}, merge=True)
+            
+        
+        db_server.set({"total_moonshards" : db_data["total_moonshards"] - total_amount}, merge=True)
+        colour = 0x77dd77
+        embed = discord.Embed(
+            colour=colour,
+            title = "",
+            description=f"✅ **{total_members:,}** members with {role.mention} role have been deducted **{amount:,}** Moon Shards"
+        )
+        await interaction.edit_original_response(embed=embed)
     
     @app_commands.checks.has_any_role('AMS', 'Sponsor')
     @group.command(name="drop", description="Drop moonshards or items")
