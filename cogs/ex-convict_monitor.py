@@ -94,41 +94,40 @@ class Monitor(commands.Cog):
     async def monitor_check(self, interaction: discord.Interaction):
         items = []
         
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_ex_convicts = db_server.collection("ex_convict")
-        db_ex_convicts = db_ex_convicts.stream()
-        
-        for doc in db_ex_convicts:
-            # print(doc.id)
-            ex_convicts = doc.to_dict()
-            # print(ex_convicts)
-            date = datetime.datetime.fromtimestamp(ex_convicts["convict_until"].timestamp())
-            # print(date)
-            # print(ex_convicts["convict_until"].timestamp())
-            date = int(ex_convicts["convict_until"].timestamp())
-            items.append(f'{ex_convicts["mention"]} \n Until: <t:{str(date)}:f>')
-            # print(items)
+        try:
+            db_server = db.collection("servers").document(str(interaction.guild_id))
+            db_ex_convicts = db_server.collection("ex_convict").stream()
             
-        nameslist = '\n \n '.join(sorted(items))
-        users = items
-        
-        # print(items)
-        # print(nameslist)
-        # print(users)
-        # This is a long list of results
-        # I'm going to use pagination to display the data
-        L = 5    # elements per page
-        async def get_page(page: int):
-            emb = discord.Embed(title="Ex-Convict List", description="")
-            offset = (page-1) * L
-            for user in users[offset:offset+L]:
-                emb.description += f"{user}\n \n"
-            # emb.set_author(name=f"Requested by {interaction.user}")
-            n = Pagination.compute_total_pages(len(users), L)
-            emb.set_footer(text=f"Page {page} from {n}")
-            return emb, n
+            for doc in db_ex_convicts:
+                ex_convicts = doc.to_dict()
+                date = int(ex_convicts["convict_until"].timestamp())
+                items.append(f'{ex_convicts["mention"]} \n Until: <t:{str(date)}:f>')
+            
+            if not items:
+                items.append('No ex-convicts found.')
+            
+            nameslist = '\n \n '.join(sorted(items))
+            users = items
+            
+            L = 5  # elements per page
+            async def get_page(page: int):
+                emb = discord.Embed(title="Ex-Convict List", description="")
+                offset = (page - 1) * L
+                for user in users[offset:offset + L]:
+                    emb.description += f"{user}\n \n"
+                n = Pagination.compute_total_pages(len(users), L)
+                emb.set_footer(text=f"Page {page} from {n}")
+                return emb, n
 
-        await Pagination(interaction, get_page).navegate()
+            await Pagination(interaction, get_page).navegate()
+        
+        except Exception as e:
+            embed = discord.Embed(
+                colour=0xff2c2c,
+                title="Error",
+                description=f"An error occurred while fetching the ex-convict list: {str(e)}"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
         
     @app_commands.command(name="monitor_check_member", description="Check ex-convict list/status")
     async def monitor_check_member(self, interaction: discord.Interaction, member: discord.Member):
