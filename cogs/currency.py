@@ -332,7 +332,8 @@ class Currency(commands.Cog):
                     # print(amount)
                     colour = 0x77dd77
                     isAdmin = discord.utils.get(interaction.guild.roles, name="Admin")
-                    if isAdmin in interaction.user.roles:
+                    isSubTech = discord.utils.get(interaction.guild.roles, name="Sub-Server Tech")
+                    if isAdmin in interaction.user.roles or isSubTech in interaction.user.roles:
                         db_currency = db_server.collection("currency").document(str(member.id))
                         db_currency.update({"balance": r_currency["balance"] + amount})
                         text = f'**✅ {member.mention} received {amount:,} Moon Shards**'
@@ -377,7 +378,7 @@ class Currency(commands.Cog):
         db_currency = db_server.collection("currency")
         total_members = 0
         total_amount = 0
-        await interaction.response.send_message("<a:Infinity1x1:1305990991098150935>")
+        await interaction.response.send_message("<a:Infinity1x1:1305957972001951754>")
         # await interaction.edit_original_response(content="text")
         for member in role.members:
             
@@ -896,7 +897,7 @@ class Currency(commands.Cog):
         db_currency = db_server.collection("currency")
         total_members = 0
         total_amount = 0
-        await interaction.response.send_message("<a:Infinity1x1:1305990991098150935>")
+        await interaction.response.send_message("<a:Infinity1x1:1305957972001951754>")
         # await interaction.edit_original_response(content="text")
         for member in role.members:
             
