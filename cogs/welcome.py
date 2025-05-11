@@ -8,6 +8,8 @@ from PIL import ImageDraw
 from PIL import ImageOps
 from discord.ext import commands
 from firebase_admin import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+from strings import DIGITAL_ONE_GUILD_ID
 db = firestore.client()
 
 class welcome(commands.Cog):
@@ -19,9 +21,23 @@ class welcome(commands.Cog):
     async def on_member_join(self, member):
         
         #Connects to firebase firestore to get channel
-        db_server = db.collection("servers").document(str(member.guild.id))
+        db_server = db.collection("servers").document(str(DIGITAL_ONE_GUILD_ID))
         db_channel = db_server.get().to_dict()
         db_channel = db_channel["welcome_channel"]
+        
+        #Checks if user has balance in the database
+        items = []
+        db_currency = db_server.collection("currency")
+        db_currency = db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()
+        name = f"{member.name}'s balance"
+        avatar = member.avatar
+        
+        for doc in db_currency:
+            items.append(1)
+        
+        if not items:
+            db_currency = db_server.collection("currency").document(str(member.id))
+            db_currency.set({"mention": member.mention,"userID": member.id, "balance": int(0)}, merge=True)
         
         my_image = Image.open("./image/welcome.png")
         
@@ -61,28 +77,28 @@ class welcome(commands.Cog):
         welcome_font = ImageFont.truetype("ariblk.ttf", 55)
         name_font = ImageFont.truetype("ariblk.ttf", 30)
         welcome_color = (248,218,150) # RGB
-        user_color = (48,255,41) # RGB
+        user_color = (253, 252, 162) # RGB
             
         draw = ImageDraw.Draw(my_image)
         X, Y = center_x+5, center_y-58
         r = 108
   
-        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = "#c7ff29", outline ="#c7ff29", width=100)
-        draw.text((width1/2, 280),"WELCOME",welcome_color,font=welcome_font, anchor="mm", stroke_width=1, stroke_fill='#8e7339')
-        draw.text((width1/2, 320),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='#0d7c09')
+        draw.ellipse([(X-r, Y-r), (X+r, Y+r)], fill = "#c7ff29", outline ="#FF4500", width=100)
+        draw.text((width1/2, 380),"WELCOME",welcome_color,font=welcome_font, anchor="mm", stroke_width=1, stroke_fill='#8e7339')
+        draw.text((width1/2, 450),f'{member.name.upper()}',user_color,font=name_font, anchor="mm", stroke_width=1, stroke_fill='#FF4500')
             
         my_image = my_image.copy()
-        my_image.paste(pfp, (317, 40), pfp)
+        my_image.paste(pfp, (412, 125), pfp)
         my_image.save("./image/profile.png")
             
         file = discord.File("./image/profile.png")
         embed = discord.Embed(
         timestamp=datetime.datetime.now()
     )
-        embed.set_footer(text="HAve Fun! ♡")
+        embed.set_footer(text="Enjoy here! ♡")
         embed.set_image(url="attachment://profile.png")
         channel = self.bot.get_channel(int(db_channel))
-        await channel.send(f'Welcome to Honeymoon Avenue, {member.mention}', embed=embed, file=file)
+        await channel.send(f'Welcome to Digital One, {member.mention}', embed=embed, file=file)
 
 # Function to add this cog to the bot
     
