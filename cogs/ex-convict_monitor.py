@@ -6,7 +6,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 import datetime
 from datetime import timedelta, datetime as datetimes
 db = firestore.client()
-from typing import Callable, Optional
+from typing import Callable, Optional, List
 import pytz
 
 
@@ -18,18 +18,7 @@ class Pagination(discord.ui.View):
         self.index = 1
         super().__init__(timeout=100)
 
-    # async def interaction_check(self, interaction: discord.Interaction) -> bool:
-    #     if interaction.user == self.interaction.user:
-    #         return True
-    #     else:
-    #         emb = discord.Embed(
-    #             description=f"Only the author of the command can perform this action.",
-    #             color=16711680
-    #         )
-    #         await interaction.response.send_message(embed=emb, ephemeral=True)
-    #         return False
-
-    async def navegate(self):
+    async def navigate(self):
         emb, self.total_pages = await self.get_page(self.index)
         if self.total_pages == 1:
             await self.interaction.response.send_message(embed=emb)
@@ -119,7 +108,7 @@ class Monitor(commands.Cog):
                 emb.set_footer(text=f"Page {page} from {n}")
                 return emb, n
 
-            await Pagination(interaction, get_page).navegate()
+            await Pagination(interaction, get_page).navigate()
         
         except Exception as e:
             embed = discord.Embed(
@@ -137,15 +126,10 @@ class Monitor(commands.Cog):
         db_ex_convicts = db_ex_convicts.where(filter=FieldFilter("name", "==", member.name)).stream()
         
         for doc in db_ex_convicts:
-            # print(doc.id)
             ex_convicts = doc.to_dict()
-            # print(ex_convicts)
             date = datetime.datetime.fromtimestamp(ex_convicts["convict_until"].timestamp())
-            # print(date)
-            # print(ex_convicts["convict_until"].timestamp())
             date = int(ex_convicts["convict_until"].timestamp())
             items.append(f'{ex_convicts["mention"]} \n Until: <t:{str(date)}:f>')
-            # print(items)
         
         if not items:
             items.append('Member not found in Ex-Convict List')
@@ -163,75 +147,152 @@ class Monitor(commands.Cog):
         await interaction.response.send_message(embed=embed)
     
     @app_commands.command(name="monitor_remove_member", description="remove member from ex-convict list")
-    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
+    @app_commands.checks.has_any_role("Admin", "Moderator", "Staff")
     async def monitor_remove_member(self, interaction: discord.Interaction, member: discord.Member):
-        if 'Ex-Convict' in str(member.roles):
-            await member.remove_roles(discord.utils.get(member.roles, name="Ex-Convict"))
-            
-            embed = discord.Embed(
-                colour=0x6ac5fe,
-                title= 'Member removed'
-            )
-            embed.add_field(name = ' ', value = f'{member.mention} has been removed as Ex-Convict')
-            await interaction.response.send_message(embed=embed)
-            
-    @app_commands.command(name="monitor_remove_expired_members", description="remove members from ex-convict list")
-    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
-    async def monitor_remove_expired_members(self, interaction: discord.Interaction):
-        print("shits")
-        
-        items = int(0)
-        date_now = datetimes.now()
-        date_now = date_now.astimezone(pytz.timezone('Asia/Manila'))
-        date_now = int(datetimes.timestamp(date_now))
-        # print(date_now)
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_ex_convicts = db_server.collection("ex_convict")
-        db_ex_convicts = db_ex_convicts.stream()
-        
-        for doc in db_ex_convicts:
-            # print(doc.id)
-            ex_convicts = doc.to_dict()
-            # print(int(ex_convicts["convict_until"].timestamp()))
-            end_date = int(ex_convicts["convict_until"].timestamp())
-            # print(end_date)
-            if end_date < date_now:
-                member = discord.utils.get(interaction.guild.members, name=ex_convicts["name"])
-                print(member)
-                if member == None:
-                    db_server = db.collection("servers").document(str(interaction.guild.id))
-                    db_ex_convicts = db_server.collection("ex_convict").document(str(doc.id)).delete()
-                else:
-                    await member.remove_roles(discord.utils.get(member.roles, name="Ex-Convict"))
-                
-                items = items + 1
-                
-        embed = discord.Embed(
-                colour=0x6ac5fe,
-                title= 'Members removed'
-            )
-        embed.add_field(name = ' ', value = f'{items} members have been removed as Ex-Convict')
-        await interaction.response.send_message(embed=embed)
-                
+        try:
+            ex_convict_role = discord.utils.get(interaction.guild.roles, name="Ex-Convict")
+            if not ex_convict_role:
+                raise ValueError('The "Ex-Convict" role does not exist in this server.')
 
-    
-    @app_commands.command(name="monitor_add_member", description="add member from ex-convict list")
-    @app_commands.checks.has_any_role("Admin","Moderator","Staff")
-    async def monitor_add_member(self, interaction: discord.Interaction, member: discord.Member):
-        if not 'Ex-Convict' in str(member.roles):
-            await member.add_roles(discord.utils.get(member.roles, name="Ex-Convict"))
-            
+            if ex_convict_role in member.roles:
+                await member.remove_roles(ex_convict_role)
+                embed = discord.Embed(
+                    colour=0x6ac5fe,
+                    title='Member removed',
+                    description=f'{member.mention} has been removed as Ex-Convict'
+                )
+            else:
+                embed = discord.Embed(
+                    colour=0xff2c2c,
+                    title='Error',
+                    description=f'{member.mention} does not have the "Ex-Convict" role.'
+                )
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    colour=0xff2c2c,
+                    title="Error",
+                    description=f"An error occurred: {str(e)}"
+                ),
+                ephemeral=True
+            )
+
+    @app_commands.command(name="monitor_remove_expired_members", description="remove members from ex-convict list")
+    @app_commands.checks.has_any_role("Admin", "Moderator", "Staff")
+    async def monitor_remove_expired_members(self, interaction: discord.Interaction):
+        try:
+            items = 0
+            date_now = datetimes.now().astimezone(pytz.timezone('Asia/Manila'))
+            date_now = int(datetimes.timestamp(date_now))
+
+            db_server = db.collection("servers").document(str(interaction.guild_id))
+            db_ex_convicts = db_server.collection("ex_convict").stream()
+
+            for doc in db_ex_convicts:
+                ex_convicts = doc.to_dict()
+                end_date = int(ex_convicts["convict_until"].timestamp())
+                if end_date < date_now:
+                    member = discord.utils.get(interaction.guild.members, name=ex_convicts["name"])
+                    if member:
+                        ex_convict_role = discord.utils.get(interaction.guild.roles, name="Ex-Convict")
+                        if ex_convict_role:
+                            await member.remove_roles(ex_convict_role)
+                    db_server.collection("ex_convict").document(str(doc.id)).delete()
+                    items += 1
+
             embed = discord.Embed(
                 colour=0x6ac5fe,
-                title= 'Member added'
+                title='Members removed',
+                description=f'{items} members have been removed as Ex-Convict'
             )
-            embed.add_field(name = ' ', value = f'{member.mention} has been added as Ex-Convict')
             await interaction.response.send_message(embed=embed)
-            
-    
-        
-        
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    colour=0xff2c2c,
+                    title="Error",
+                    description=f"An error occurred: {str(e)}"
+                ),
+                ephemeral=True
+            )
+
+    @app_commands.command(name="monitor_add_member", description="add member to ex-convict list")
+    @app_commands.checks.has_any_role("Admin", "Moderator", "Staff")
+    async def monitor_add_member(self, interaction: discord.Interaction, member: discord.Member):
+        try:
+            ex_convict_role = discord.utils.get(interaction.guild.roles, name="Ex-Convict")
+            if not ex_convict_role:
+                raise ValueError('The "Ex-Convict" role does not exist in this server.')
+
+            if ex_convict_role not in member.roles:
+                await member.add_roles(ex_convict_role)
+                embed = discord.Embed(
+                    colour=0x6ac5fe,
+                    title='Member added',
+                    description=f'{member.mention} has been added as Ex-Convict'
+                )
+            else:
+                embed = discord.Embed(
+                    colour=0xff2c2c,
+                    title='Error',
+                    description=f'{member.mention} already has the "Ex-Convict" role.'
+                )
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    colour=0xff2c2c,
+                    title="Error",
+                    description=f"An error occurred: {str(e)}"
+                ),
+                ephemeral=True
+            )
+
+    @app_commands.command(name="monitor_remove_multiple_members", description="Remove multiple members from the ex-convict list")
+    @app_commands.checks.has_any_role("Admin", "Moderator", "Staff")
+    async def monitor_remove_multiple_members(self, interaction: discord.Interaction, members: str):
+        """
+        Removes multiple members from the ex-convict list.
+        :param members: A string of member mentions (e.g., "@User1 @User2").
+        """
+        try:
+            ex_convict_role = discord.utils.get(interaction.guild.roles, name="Ex-Convict")
+            if not ex_convict_role:
+                raise ValueError('The "Ex-Convict" role does not exist in this server.')
+
+            # Parse member mentions from the input string
+            member_ids = [int(mention.strip("<@!>")) for mention in members.split() if mention.startswith("<@")]
+            removed_members = []
+
+            for member_id in member_ids:
+                member = interaction.guild.get_member(member_id)
+                if member and ex_convict_role in member.roles:
+                    await member.remove_roles(ex_convict_role)
+                    removed_members.append(member.mention)
+
+            if removed_members:
+                embed = discord.Embed(
+                    colour=0x6ac5fe,
+                    title='Members removed',
+                    description=f'The following members have been removed as Ex-Convict:\n' + '\n'.join(removed_members)
+                )
+            else:
+                embed = discord.Embed(
+                    colour=0xff2c2c,
+                    title='No members removed',
+                    description='None of the specified members had the "Ex-Convict" role or were invalid.'
+                )
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    colour=0xff2c2c,
+                    title="Error",
+                    description=f"An error occurred: {str(e)}"
+                ),
+                ephemeral=True
+            )
         
 
 # Function to add this cog to the bot
