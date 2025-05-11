@@ -8,15 +8,49 @@ import datetime
 from datetime import timedelta, datetime as datetimes
 db = firestore.client()
 from firebase_admin import storage
-from typing import Callable, Optional, Union
-import pytz
+from typing import Callable, Optional
 import string
 import random
+from strings import *
 
 db = firestore.client()
 bucket = storage.bucket()
 
 voucher_code_global = None
+
+# --- Utility Functions ---
+
+def get_db_server(guild_id=None):
+    if guild_id is None:
+        guild_id = DIGITAL_ONE_GUILD_ID
+    return db.collection("servers").document(str(guild_id))
+
+def get_db_currency(db_server):
+    return db_server.collection("currency")
+
+def get_user_currency_doc(db_currency, user_id):
+    return [d for d in db_currency.where(filter=FieldFilter("userID", "==", user_id)).stream()]
+
+def get_user_inventory(db_currency, user_id):
+    return db_currency.document(str(user_id)).collection("inventory")
+
+def get_inventory_item(db_inventory, item_name):
+    return [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
+
+def create_embed(description=None, colour=0x6ac5fe, title=None, author=None, avatar=None, footer=None):
+    embed = discord.Embed(description=description, colour=colour, title=title)
+    if author and avatar:
+        embed.set_author(name=author, icon_url=avatar)
+    if footer:
+        embed.set_footer(text=footer)
+    return embed
+
+def send_error(interaction, text, ephemeral=True):
+    embed = create_embed(description=text, colour=0xff2c2c)
+    return interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+
+def admin_only():
+    return app_commands.checks.has_role(ADMIN_ROLE_ID)
 
 class Pagination(discord.ui.View):
     def __init__(self, interaction: discord.Interaction, get_page: Callable):
@@ -31,7 +65,7 @@ class Pagination(discord.ui.View):
             return True
         else:
             emb = discord.Embed(
-                description=f"Can't change page from another member. Use **/ms shop**",
+                description=PAGINATION_OTHER_USER,
                 color=16711680
             )
             await interaction.response.send_message(embed=emb, ephemeral=True)
@@ -108,154 +142,137 @@ class SimpleView(discord.ui.View):
     foo : bool = None
     
     async def disable_all_items(self):
-        for item in self.children:
-            item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            for item in self.children:
+                item.disabled = True
+            if hasattr(self, 'message') and self.message:
+                await self.message.edit(view=self)
+        except Exception as e:
+            print(f"Error disabling items: {e}")
     
     async def on_timeout(self) -> None:
-        # await self.message.channel.send("Timedout")
-        await self.disable_all_items()
+        try:
+            await self.disable_all_items()
+        except Exception as e:
+            print(f"Timeout error: {e}")
     
     @discord.ui.button(label="🫳 Grab", 
                        style=discord.ButtonStyle.success)
-    async def response(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # print(self.currency)
-        # print(self.userID)
-        print(self.item_name)
-        if (drop_restriction == "on"):
-            roles = ["5 — Pokemon",
-                "Server VIP","Sponsor"]
-        else:
-            roles = ["@everyone"]
+    async def response(self, interaction: discord.Interaction, button: discord.Button):
+        try:
+            print(self.item_name)
+            if (drop_restriction == "on"):
+                roles = ["5 — Pokemon",
+                    "Server VIP","Sponsor"]
+            else:
+                roles = ["@everyone"]
             
-        # print(interaction.user.roles)
-        if not 'Ex-Convict' in str(interaction.user.roles):
-            if any(role.name in roles for role in interaction.user.roles):
-                if(self.foo != True):
-                    self.foo = True
-                    # await interaction.response.send_message(f":partying_face:", ephemeral=True)
-                    
-                    db_server = db.collection("servers").document(str(interaction.guild_id))
-                    db_currency = db_server.collection("currency")
-                    
-                    if self.currency:
-                        text = f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n **{self.currency:,} Moon Shards** were added to your balance'
-                        embed = discord.Embed(
-                        description=text,
-                        colour= 0x008000
-                        )
-                        await interaction.response.send_message(embed=embed)
-                        
-                        db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-                        db_currency_sender = [d for d in db_currency.where(filter=FieldFilter("userID", "==", self.userID)).stream()]
-                        db_currency_receiver_account = db_server.collection("currency").document(str(interaction.user.id))
-                        db_currency_sender_account = db_server.collection("currency").document(str(self.userID))
-                    
-                        if len(db_currency_receiver):
-                            for doc in db_currency_receiver:
-                                r_currency = doc.to_dict()
-                                db_currency_receiver_account.update({"balance": r_currency["balance"] + self.currency})
-                                for doc in db_currency_sender:
-                                    s_currency = doc.to_dict()
-                                    s_currency_remaining = s_currency["balance"] - self.currency
+            if not 'Ex-Convict' in str(interaction.user.roles):
+                if any(role.name in roles for role in getattr(interaction.user, 'roles', [])):
+                    if(getattr(self, 'foo', None) != True):
+                        self.foo = True
+                        db_server = get_db_server()
+                        db_currency = db_server.collection("currency")
+                        if self.currency:
+                            text = SHOP_GRAB_COIN_SUCCESS.format(mention=interaction.user.mention, currency=self.currency)
+                            embed = discord.Embed(
+                            description=text,
+                            colour= 0x008000
+                            )
+                            await interaction.response.send_message(embed=embed)
+                            try:
+                                db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
+                                db_currency_sender = [d for d in db_currency.where(filter=FieldFilter("userID", "==", self.userID)).stream()]
+                                db_currency_receiver_account = db_server.collection("currency").document(str(interaction.user.id))
+                                db_currency_sender_account = db_server.collection("currency").document(str(self.userID))
+                                if len(db_currency_receiver):
+                                    for doc in db_currency_receiver:
+                                        r_currency = doc.to_dict()
+                                        db_currency_receiver_account.update({"balance": r_currency.get("balance", 0) + self.currency})
+                                        for doc in db_currency_sender:
+                                            s_currency = doc.to_dict()
+                                            s_currency_remaining = s_currency.get("balance", 0) - self.currency
+                                            db_currency_sender_account.update({"balance": s_currency_remaining})
+                                else:
+                                    db_currency_receiver_account.set({"mention": interaction.user.mention,"userID": interaction.user.id, "balance": self.currency}, merge=True)
+                                    db_currency_sender_data = db_currency_sender_account.get().to_dict() or {"balance": 0}
+                                    s_currency_remaining = db_currency_sender_data.get("balance", 0) - self.currency
                                     db_currency_sender_account.update({"balance": s_currency_remaining})
+                            except Exception as e:
+                                await interaction.followup.send(DATABASE_ERROR.format(error=e), ephemeral=True)
                         else:
-                            db_currency_receiver_account.set({"mention": interaction.user.mention,"userID": interaction.user.id, "balance": self.currency}, merge=True)
-                            db_currency_sender_data = db_currency_sender_account.get().to_dict()
-                            s_currency_remaining = db_currency_sender_data["balance"] - self.currency
-                            db_currency_sender_account.update({"balance": s_currency_remaining})
-                        # text = f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n {self.currency} Moon Shards were added to your balance'
-                        
+                            text = SHOP_GRAB_ITEM_SUCCESS.format(mention=interaction.user.mention, item_name=string.capwords(self.item_name, sep=None))
+                            embed = discord.Embed(
+                            description=text,
+                            colour= 0x008000
+                            )
+                            await interaction.response.send_message(embed=embed)
+                            try:
+                                db_currency_user = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
+                                db_inventory_sender= db_currency.document(str(self.userID)).collection("inventory")
+                                db_inventory_receiver = db_currency.document(str(interaction.user.id)).collection("inventory")
+                                db_inventory_item = [d for d in db_inventory_sender.where(filter=FieldFilter("item_name", "==", self.item_name.lower())).limit(1).stream()]
+                                db_inventory_item_receiver = [d for d in db_inventory_receiver.where(filter=FieldFilter("item_name", "==", self.item_name.lower())).limit(1).stream()]
+                                if len(db_currency_user):
+                                    for doc in db_inventory_item:
+                                        inventory_item = doc.to_dict()
+                                        item_name = inventory_item.get("item_name", "")
+                                        item_name = string.capwords(item_name, sep = None)
+                                        item_desc = inventory_item.get("desc", "")
+                                        item_price = inventory_item.get("amount", 0)
+                                        item_isRole = inventory_item.get("isRole", False)
+                                        item_count = inventory_item.get("item_count", 1)
+                                        if len(db_inventory_item_receiver):
+                                            for doc in db_inventory_item_receiver:
+                                                inventory_item_receiver = doc.to_dict()
+                                                item_count_receiver = inventory_item_receiver.get("item_count", 1)
+                                                db_inventory_item_receiver = db_inventory_receiver.document(str(doc.id))
+                                                db_inventory_item_receiver.update({"item_count": item_count_receiver + 1})
+                                        else:
+                                            if item_isRole:
+                                                item_role_id = inventory_item.get("roleID", None)
+                                                item_role_mention = inventory_item.get("roleMention", None)
+                                                db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
+                                            else:
+                                                db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
+                                        if item_count > 1:
+                                            db_inventory_item = db_inventory_sender.document(str(doc.id))
+                                            db_inventory_item.update({"item_count": item_count - 1})
+                                        else: 
+                                            db_inventory_sender.document(f'{doc.id}').delete()
+                                else:
+                                    db_currency_receiver_account = db_server.collection("currency").document(str(interaction.user.id))
+                                    db_currency_receiver_account.set({"mention": interaction.user.mention,"userID": interaction.user.id, "balance": 0}, merge=True)
+                                    db_inventory_receiver = db_currency.document(str(interaction.user.id)).collection("inventory")
+                                    for doc in db_inventory_item:
+                                        inventory_item = doc.to_dict()
+                                        item_name = inventory_item.get("item_name", "")
+                                        item_name = string.capwords(item_name, sep = None)
+                                        item_desc = inventory_item.get("desc", "")
+                                        item_price = inventory_item.get("amount", 0)
+                                        item_isRole = inventory_item.get("isRole", False)
+                                        item_count = inventory_item.get("item_count", 1)
+                                        if item_isRole:
+                                            item_role_id = inventory_item.get("roleID", None)
+                                            item_role_mention = inventory_item.get("roleMention", None)
+                                            db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
+                                        else:
+                                            db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
+                                        if item_count > 1:
+                                            db_inventory_item = db_inventory_sender.document(str(doc.id))
+                                            db_inventory_item.update({"item_count": item_count - 1})
+                                        else: 
+                                            db_inventory_sender.document(f'{doc.id}').delete()
+                            except Exception as e:
+                                await interaction.followup.send(DATABASE_ERROR.format(error=e), ephemeral=True)
                     else:
-                        text = f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n **{string.capwords(self.item_name, sep = None)}** was added to your inventory'
-                        embed = discord.Embed(
-                        description=text,
-                        colour= 0x008000
-                        )
-                        await interaction.response.send_message(embed=embed)
-                        
-                        db_currency_user = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-                        db_inventory_sender= db_currency.document(str(self.userID)).collection("inventory")
-                        db_inventory_receiver = db_currency.document(str(interaction.user.id)).collection("inventory")
-                        db_inventory_item = [d for d in db_inventory_sender.where(filter=FieldFilter("item_name", "==", self.item_name.lower())).limit(1).stream()]
-                        db_inventory_item_receiver = [d for d in db_inventory_receiver.where(filter=FieldFilter("item_name", "==", self.item_name.lower())).limit(1).stream()]
-                        
-                        if len(db_currency_user):
-                            for doc in db_inventory_item:
-                                inventory_item = doc.to_dict()
-                                item_name = inventory_item["item_name"]
-                                item_name = string.capwords(item_name, sep = None)
-                                item_desc = inventory_item["desc"]
-                                item_price = inventory_item["amount"]
-                                item_isRole = inventory_item["isRole"]
-                                item_count = inventory_item["item_count"]
-                                
-                                if len(db_inventory_item_receiver):
-                                    for doc in db_inventory_item_receiver:
-                                        inventory_item_receiver = doc.to_dict()
-                                        item_count_receiver = inventory_item_receiver["item_count"]
-                                        db_inventory_item_receiver = db_inventory_receiver.document(str(doc.id))
-                                        db_inventory_item_receiver.update({"item_count": item_count_receiver + 1})
-                                else:
-                                    if item_isRole:
-                                        item_role_id = inventory_item["roleID"]
-                                        item_role_mention = inventory_item["roleMention"]
-                                        db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
-                                    else:
-                                        db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
-                                if item_count > 1:
-                                    db_inventory_item = db_inventory_sender.document(str(doc.id))
-                                    db_inventory_item.update({"item_count": item_count - 1})
-                                else: 
-                                    db_inventory_sender.document(f'{doc.id}').delete()
-                        else:
-                            db_currency_receiver_account = db_server.collection("currency").document(str(interaction.user.id))
-                            db_currency_receiver_account.set({"mention": interaction.user.mention,"userID": interaction.user.id, "balance": 0}, merge=True)
-                            db_inventory_receiver = db_currency.document(str(interaction.user.id)).collection("inventory")
-                            
-                            for doc in db_inventory_item:
-                                inventory_item = doc.to_dict()
-                                item_name = inventory_item["item_name"]
-                                item_name = string.capwords(item_name, sep = None)
-                                item_desc = inventory_item["desc"]
-                                item_price = inventory_item["amount"]
-                                item_isRole = inventory_item["isRole"]
-                                item_count = inventory_item["item_count"]
-                                
-                                if item_isRole:
-                                    item_role_id = inventory_item["roleID"]
-                                    item_role_mention = inventory_item["roleMention"]
-                                    db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
-                                else:
-                                    db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
-                                if item_count > 1:
-                                    db_inventory_item = db_inventory_sender.document(str(doc.id))
-                                    db_inventory_item.update({"item_count": item_count - 1})
-                                else: 
-                                    db_inventory_sender.document(f'{doc.id}').delete()
-            
-                        # text = f'**🎉 Congratulations {interaction.user.mention}, you got it! 🎉** \n \n {item_name} was added to your inventory'
-                #     embed = discord.Embed(
-                #         description=text,
-                #         colour= 0x008000
-                # )
-                #     await interaction.response.send_message(embed=embed)
-
-                    # self.stop()
-                else:
-                    await interaction.response.send_message("Sorry! item was already grabbed", ephemeral=True)
-                    # self.stop()
+                        await interaction.response.send_message(ITEM_ALREADY_GRABBED, ephemeral=True)
+                else: 
+                    await interaction.response.send_message(LEVEL_TOO_LOW, ephemeral=True)
             else: 
-                await interaction.response.send_message("Sorry! Only members Level 5 and above can grab", ephemeral=True)
-                
-        else: await interaction.response.send_message("Sorry! You are an Ex-Convict, you cannot grab items", ephemeral=True)
-                
-    
-    # @hello.error
-    # async def say_error(self, interaction: discord.Interaction):
-        # await interaction.response.send_message("Sorry!")
-    #     self.stop()
-    
+                await interaction.response.send_message(EX_CONVICT_CANNOT_GRAB, ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(GENERIC_ERROR.format(error=e), ephemeral=True)
 
 class Currency(commands.Cog):
     """commands: currency"""
@@ -266,799 +283,478 @@ class Currency(commands.Cog):
     async def on_ready(self):
         print("Currency ready")
     
-    group = app_commands.Group(name="ms", description="Moon Shards Commands")
+    group = app_commands.Group(name="coin", description="Coin Commands")
     
-    @group.command(name="balance", description="Shows member Moon Shard balance")
+    @group.command(name="balance", description="Shows member Coin balance")
     async def balance(self, interaction: discord.Interaction, member: typing.Optional[discord.Member]):
-        items=[]
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_currency = db_server.collection("currency")
-        if not member:
-            db_currency = db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()
-            name = f"{interaction.user.name}'s balance"
-            avatar = interaction.user.avatar
-            
+        db_server = get_db_server()
+        db_currency = get_db_currency(db_server)
+        user = member or interaction.user
+        user_currency = get_user_currency_doc(db_currency, user.id)
+        name = f"{user.name}'s balance"
+        avatar = user.avatar
+        if user_currency:
+            user_balance = user_currency[0].to_dict().get("balance", 0)
         else:
-            db_currency = db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()
-            name = f"{member.name}'s balance"
-            avatar = member.avatar
-        
-        for doc in db_currency:
-            # print(doc.id)
-            currency = doc.to_dict()
-            user_balance = (currency["balance"])
-            items.append(f'<:moon_have:1285884278348976198> **Moon Shards: {user_balance:,}**')
-        
-        if not items:
-            # db_server = db.collection("servers").document(str(interaction.guild.id))
-            if not member:
-                db_currency = db_server.collection("currency").document(str(interaction.user.id))
-                db_currency.set({"mention": interaction.user.mention,"userID": interaction.user.id, "balance": int(0)}, merge=True)
-                name = f"{interaction.user.name}'s balance"
-                avatar = interaction.user.avatar
-            else:
-                db_currency = db_server.collection("currency").document(str(member.id))
-                db_currency.set({"mention": member.mention,"userID": member.id, "balance": int(0)}, merge=True)
-                name = f"{member.name}'s balance"
-                avatar = member.avatar
-            items.append("<:moon_have:1285884278348976198> **Moon Shards : 0**")
-            
-        nameslist = '\n \n '.join(sorted(items))
-        
-        embed = discord.Embed(
-            colour = 0x6ac5fe,
-            
-        )
-        embed.set_author(name = name, icon_url= avatar)
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: Earn moon shards by joining events, giveaways and more!")
+            db_currency.document(str(user.id)).set({"mention": user.mention, "userID": user.id, "balance": 0}, merge=True)
+            user_balance = 0
+        items = [f'{COINS_JUMP_ICON} **Coins: {user_balance:,}**']
+        embed = create_embed(author=name, avatar=avatar, footer="TIP: Earn coins by joining events, giveaways and more!", colour=0x6ac5fe)
+        embed.add_field(name=' ', value='\n \n '.join(items))
         await interaction.response.send_message(embed=embed)
     
-    @group.command(name="give", description="Give/Transfer Moon Shards to another member")
+    @group.command(name="give", description="Give/Transfer Coins to another member")
     async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int):
-        items=[]
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_data = db_server.get().to_dict()
-        db_currency = db_server.collection("currency")
-        db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
-        db_currency_sender = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-        if len(db_currency_receiver):
-            if len(db_currency_sender):
-                
-                for doc in db_currency_receiver:
-                    r_currency = doc.to_dict()
-                    # print(member.id)
-                    # print(r_currency["balance"])
-                    # print(amount)
-                    colour = 0x77dd77
-                    isAdmin = discord.utils.get(interaction.guild.roles, name="Admin")
-                    isSubTech = discord.utils.get(interaction.guild.roles, name="Sub-Server Tech")
-                    if isAdmin in interaction.user.roles or isSubTech in interaction.user.roles:
-                        db_currency = db_server.collection("currency").document(str(member.id))
-                        db_currency.update({"balance": r_currency["balance"] + amount})
-                        text = f'**✅ {member.mention} received {amount:,} Moon Shards**'
-                        db_server.set({"total_moonshards" : db_data["total_moonshards"] + amount}, merge=True)
-                    else:
-                        for doc in db_currency_sender:
-                            s_currency = doc.to_dict()
-                            sender_balance = s_currency["balance"] - amount
-                            if sender_balance >= 0:
-                                db_currency_receiver = db_server.collection("currency").document(str(member.id))
-                                db_currency_sender = db_server.collection("currency").document(str(interaction.user.id))
-                                db_currency_receiver.update({"balance": r_currency["balance"] + amount})
-                                db_currency_sender.update({"balance": s_currency["balance"] - amount})
-                                text = f'✅ Transferred **{amount:,} Moon Shards** to {member.mention}'
-                            else:
-                                text = "⛔ Not enough balance to give/transfer"
-                                colour = 0xff2c2c
-                items.append(text)
-            else:
-                text = f"⛔ You don't have an account.\n\nUse **/ms balance** before giving"
-                colour = 0xff2c2c
-                items.append(text)      
+        db_currency = get_db_currency(db_server)
+        receiver_docs = get_user_currency_doc(db_currency, member.id)
+        sender_docs = get_user_currency_doc(db_currency, interaction.user.id)
+        if not receiver_docs:
+            await send_error(interaction, GIVE_RECEIVER_NO_ACCOUNT)
+            return
+        if not sender_docs:
+            await send_error(interaction, GIVE_SENDER_NO_ACCOUNT)
+            return
+        r_currency = receiver_docs[0].to_dict()
+        s_currency = sender_docs[0].to_dict()
+        isAdmin = discord.utils.get(interaction.guild.roles, name="Admin") in interaction.user.roles
+        if isAdmin:
+            db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
+            db_server.set({"total_moonshards": db_data["total_moonshards"] + amount}, merge=True)
+            text = GIVE_SUCCESS_ADMIN.format(mention=member.mention, amount=amount)
         else:
-            text = f"⛔ Receiver doesn't have an account.\n\nUse **/ms balance member[name]** before giving"
-            colour = 0xff2c2c
-            items.append(text)
-        nameslist = '\n \n '.join(sorted(items))
-        embed = discord.Embed(
-            colour=colour,
-        )
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: you can check shop items using /ms shop")
+            sender_balance = s_currency["balance"] - amount
+            if sender_balance < 0:
+                await send_error(interaction, GIVE_NOT_ENOUGH_BALANCE)
+                return
+            db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
+            db_currency.document(str(interaction.user.id)).update({"balance": sender_balance})
+            text = GIVE_SUCCESS.format(amount=amount, mention=member.mention)
+        embed = create_embed(description=text, colour=0x77dd77, footer="TIP: you can check shop items using /coin shop")
         await interaction.response.send_message(embed=embed)
         
-        
-    @app_commands.checks.has_any_role('Admin','Sub-Server Tech')
-    @group.command(name="mass-give", description="AMS only command")
+    @admin_only()
+    @group.command(name="mass-give", description="Admin Only Command")
     async def mass_give(self, interaction: discord.Interaction, role: discord.Role, amount: int):
         items=[]
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_data = db_server.get().to_dict()
-        db_currency = db_server.collection("currency")
+        db_currency = get_db_currency(db_server)
         total_members = 0
         total_amount = 0
-        await interaction.response.send_message("<a:Infinity1x1:1305957972001951754>")
-        # await interaction.edit_original_response(content="text")
+        await interaction.response.send_message(f"{LOADING_ICON}")
         for member in role.members:
-            
             db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
             db_currency_receiver_account = db_server.collection("currency").document(str(member.id))
-            total_members= total_members + 1
-            total_amount = total_amount + amount
-            
+            total_members += 1
+            total_amount += amount
             if len(db_currency_receiver):
                 for doc in db_currency_receiver:
                     r_currency = doc.to_dict()
                     db_currency_receiver_account.update({"balance": r_currency["balance"] + amount})
-            
             else:
                 db_currency_receiver_account.set({"mention": member.mention,"userID": member.id, "balance": amount}, merge=True)
-            
-        
         db_server.set({"total_moonshards" : db_data["total_moonshards"] + total_amount}, merge=True)
         colour = 0x77dd77
         embed = discord.Embed(
             colour=colour,
             title = "",
-            description=f"✅ **{total_members:,}** members with {role.mention} role have been given **{amount:,}** Moon Shards"
+            description=MASS_GIVE_SUCCESS.format(total_members=total_members, role=role.mention, amount=amount)
         )
         await interaction.edit_original_response(embed=embed)
                 
-                
-    @app_commands.checks.has_any_role('Admin','AMS')
-    @group.command(name="add-shop-item", description="AMS only command")
+    @admin_only()
+    @group.command(name="add-shop-item", description="Admin Only Command")
     async def add_shop_item(self, interaction: discord.Interaction, item_name: str, description: str, amount: int, role: typing.Optional[discord.Role]):
-        # print(role)
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_shop = db_server.collection("shop")
         if not role:
             db_shop.add({"item_name" : item_name.lower(), "desc": description.lower(), "amount": amount, "isRole": False})
         else:
             db_shop.add({"item_name" : item_name.lower(), "desc": description.lower(), "amount": amount, "isRole": True, "roleID": role.id, "roleMention": role.mention})
-        await interaction.response.send_message(f"**✅ Successfully added `{item_name}` to shop items.**", ephemeral=True)
+        await interaction.response.send_message(ADD_SHOP_ITEM_SUCCESS.format(item_name=item_name), ephemeral=True)
         
-    @app_commands.checks.has_any_role('Admin','AMS')
-    @group.command(name="remove-shop-item", description="AMS only command")
+    @admin_only()
+    @group.command(name="remove-shop-item", description="Admin Only Command")
     async def remove_shop_item(self, interaction: discord.Interaction, item_name: str):
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_shop = db_server.collection("shop")
         db_shop_item = [d for d in db_shop.where(filter=FieldFilter("item_name", "==", item_name.lower())).stream()]
         if len(db_shop_item):
             for doc in db_shop_item:
                 db_shop.document(f'{doc.id}').delete()
-            await interaction.response.send_message(f"✅ Successfully removed **{item_name}** from shop items.", ephemeral=True)
+            await interaction.response.send_message(REMOVE_SHOP_ITEM_SUCCESS.format(item_name=item_name), ephemeral=True)
         else:
-            await interaction.response.send_message(f"⛔ No item found, please check correct spelling of the item.", ephemeral=True)
+            await interaction.response.send_message(NO_ITEM_FOUND, ephemeral=True)
             
-    @group.command(name="shop", description="Moon Shard Shop")
+    @group.command(name="shop", description="Coin Shop")
     async def shop(self, interaction: discord.Interaction):
-        items = []
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         shop_items = db_server.collection("shop")
-        shop_items = [d for d in shop_items.order_by("item_name").stream()]
-        
-        if len(shop_items):
-            for doc in shop_items:
-                # print(doc.id)
-                shop_item = doc.to_dict()
-                item_name = shop_item["item_name"]
-                item_name = string.capwords(item_name, sep = None)
-                item_desc = shop_item["desc"]
-                item_price = shop_item["amount"]
-                item_isRole = shop_item["isRole"]
-                if item_isRole:
-                    item_role_id = shop_item["roleID"]
-                    item_role_mention = shop_item["roleMention"]
-                items.append({'text': f'**{item_name} [{item_role_mention}] — <:moon_have:1285884278348976198> {item_price:,}**\n{item_desc}', 'price': item_price} if item_isRole else {'text': f'**{item_name} — <:moon_have:1285884278348976198> {item_price:,}**\n{item_desc}', 'price': item_price})
-
-            # nameslist = '\n \n '.join(sorted(items))
-            sorted_items = sorted(items, key=lambda element: element['price'], reverse=True)
-            users = sorted_items
-        else:
-            items.append({'text': 'No items in shop...'})
-            users = items
-            
-        
-        # print(items)
-        # print(nameslist)
-        # print(users)
-        # This is a long list of results
-        # I'm going to use pagination to display the data
-        L = 5    # elements per page
+        shop_docs = [d for d in shop_items.order_by("item_name").stream()]
+        if not shop_docs:
+            await send_error(interaction, NO_ITEMS_IN_SHOP, ephemeral=False)
+            return
+        items = []
+        for doc in shop_docs:
+            shop_item = doc.to_dict()
+            item_name = string.capwords(shop_item["item_name"], sep=None)
+            item_desc = shop_item["desc"]
+            item_price = shop_item["amount"]
+            item_isRole = shop_item["isRole"]
+            if item_isRole:
+                item_role_mention = shop_item["roleMention"]
+                items.append({'text': f'**{item_name} [{item_role_mention}] — {COINS_JUMP_ICON} {item_price:,}**\n{item_desc}', 'price': item_price})
+            else:
+                items.append({'text': f'**{item_name} — {COINS_JUMP_ICON} {item_price:,}**\n{item_desc}', 'price': item_price})
+        sorted_items = sorted(items, key=lambda element: element['price'], reverse=True)
+        L = 5
         async def get_page(page: int):
-            emb = discord.Embed(title="Moon Shard Shop", description="", colour=0x6ac5fe)
+            emb = create_embed(title="Coin Shop", colour=0x6ac5fe)
             offset = (page-1) * L
-            for user in users[offset:offset+L]:
-                # print(list(user.values())[0])
-                emb.description += f"{list(user.values())[0]}\n \n"
-            # emb.set_author(name=f"Requested by {interaction.user}")
-            n = Pagination.compute_total_pages(len(users), L)
+            emb.description = ""
+            for user in sorted_items[offset:offset+L]:
+                emb.description += f"{user['text']}\n \n"
+            n = Pagination.compute_total_pages(len(sorted_items), L)
             emb.set_footer(text=f"Page {page} from {n}")
             return emb, n
-
         await Pagination(interaction, get_page).navegate()
     
-    @group.command(name="buy-item", description="buy an item from Moon Shard Shop")
+    @group.command(name="buy-item", description="buy an item from Coin Shop")
     async def buy_item(self, interaction: discord.Interaction, item_name: str):
-        items=[]
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_data = db_server.get().to_dict()
-        db_currency = db_server.collection("currency")
+        db_currency = get_db_currency(db_server)
         db_shop = db_server.collection("shop")
-        db_inventory = db_currency.document(str(interaction.user.id)).collection("inventory")
-        db_inventory_item = [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
+        db_inventory = get_user_inventory(db_currency, interaction.user.id)
+        db_inventory_item = get_inventory_item(db_inventory, item_name)
         db_shop_item = [d for d in db_shop.where(filter=FieldFilter("item_name", "==", item_name.lower())).stream()]
-        db_currency_buyer = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-        
-        if len(db_shop_item):
-            for doc in db_shop_item:
-                # print(doc.id)
-                shop_item = doc.to_dict()
-                item_name = shop_item["item_name"]
-                # item_name = string.capwords(item_name, sep = None)
-                item_desc = shop_item["desc"]
-                item_price = shop_item["amount"]
-                item_isRole = shop_item["isRole"]
-                if item_isRole:
-                    item_role_id = shop_item["roleID"]
-                    item_role_mention = shop_item["roleMention"]
-                if len(db_currency_buyer):
-                    for doc in db_currency_buyer:
-                        # print(doc.id)
-                        currency_buyer = doc.to_dict()
-                        balance = currency_buyer["balance"]
-                        mention = currency_buyer["mention"]
-                        userID = currency_buyer["userID"]
-                        buyer_balance = balance - item_price
-                        if buyer_balance >= 0:
-                            if len(db_inventory_item):
-                                for doc in db_inventory_item:
-                                    inventory_item = doc.to_dict()
-                                    item_count = inventory_item["item_count"]
-                                    db_inventory_item = db_inventory.document(str(doc.id))
-                                    db_inventory_item.update({"item_count": item_count + 1})
-                            else:
-                                if item_isRole:
-                                    db_inventory.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
-                                else:
-                                    db_inventory.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
-                            db_currency_buyer = db_server.collection("currency").document(str(interaction.user.id))
-                            db_currency_buyer.update({"balance": buyer_balance})
-                            db_server.set({"total_moonshards" : db_data["total_moonshards"] - item_price}, merge=True)
-                                # await interaction.response.send_message(f"**✅ Successfully removed `{item_name}` from shop items.**", ephemeral=True)
-                            item_name = string.capwords(item_name, sep = None)
-                            text = f"✅ Successfully purchased **{item_name}**"
-                            colour = 0x77dd77
-                            ephemeral = False
-                            
-                        else:
-                            # await interaction.response.send_message(f"**not enough balance", ephemeral=True)
-                            text = f"⛔ You don't have enough balance for this item"
-                            colour = 0xff2c2c
-                            ephemeral = True
-                            
-                else:
-                    # await interaction.response.send_message(f"**no account found**", ephemeral=True)
-                    text = f"⛔ You don't have an account.\n\nUse **/ms balance** before buying."
-                    colour = 0xff2c2c
-                    ephemeral = True
+        db_currency_buyer = get_user_currency_doc(db_currency, interaction.user.id)
+        if not db_shop_item:
+            await send_error(interaction, ITEM_NOT_FOUND)
+            return
+        shop_item = db_shop_item[0].to_dict()
+        item_price = shop_item["amount"]
+        item_isRole = shop_item["isRole"]
+        item_desc = shop_item["desc"]
+        item_name = shop_item["item_name"]
+        item_role_id = shop_item.get("roleID")
+        item_role_mention = shop_item.get("roleMention")
+        if not db_currency_buyer:
+            await send_error(interaction, NO_ACCOUNT)
+            return
+        currency_buyer = db_currency_buyer[0].to_dict()
+        balance = currency_buyer["balance"]
+        buyer_balance = balance - item_price
+        if buyer_balance < 0:
+            await send_error(interaction, NOT_ENOUGH_BALANCE)
+            return
+        if db_inventory_item:
+            doc = db_inventory_item[0]
+            inventory_item = doc.to_dict()
+            item_count = inventory_item["item_count"]
+            db_inventory.document(str(doc.id)).update({"item_count": item_count + 1})
         else:
-            # await interaction.response.send_message(f"**item not found**", ephemeral=True)
-            text = f"⛔ Item not found. Please check correct spelling of item"
-            colour = 0xff2c2c
-            ephemeral = True
+            add_data = {"item_name": item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1}
+            if item_isRole:
+                add_data["roleID"] = item_role_id
+                add_data["roleMention"] = item_role_mention
+            db_inventory.add(add_data)
+        db_currency.document(str(interaction.user.id)).update({"balance": buyer_balance})
+        db_server.set({"total_moonshards": db_data["total_moonshards"] - item_price}, merge=True)
+        item_name_cap = string.capwords(item_name, sep=None)
+        text = SHOP_PURCHASE_SUCCESS.format(item_name=item_name_cap)
+        embed = create_embed(description=text, colour=0x77dd77, footer="TIP: Use /coin inventory to check owned items")
+        await interaction.response.send_message(embed=embed)
         
-        items.append(text)
-        nameslist = '\n \n '.join(sorted(items))
-        embed = discord.Embed(
-            colour=colour,
-        )
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: Use /ms inventory to check owned items")
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
-        
-    @group.command(name="inventory", description="Check own or other member Inventory")
+    @group.command(name="inventory", description="Check own or other members Inventory")
     async def inventory(self, interaction: discord.Interaction, member: typing.Optional[discord.Member]):
+        db_server = get_db_server()
+        db_currency = get_db_currency(db_server)
+        user = member or interaction.user
+        user_currency = get_user_currency_doc(db_currency, user.id)
+        db_inventory = get_user_inventory(db_currency, user.id)
+        inventory_docs = [d for d in db_inventory.order_by("item_name").stream()]
+        name = f"{user.name}'s Inventory"
+        avatar = user.avatar
+        if not user_currency:
+            await send_error(interaction, NO_ACCOUNT_FOUND)
+            return
+        if not inventory_docs:
+            await send_error(interaction, INVENTORY_EMPTY, ephemeral=False)
+            return
         items = []
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_currency = db_server.collection("currency")
-        # shop_items = [d for d in shop_items.stream()]
-        
-        if not member:
-            db_currency_user = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-            db_inventory = [d for d in db_currency.document(str(interaction.user.id)).collection("inventory").order_by("item_name").stream()]
-            name = f"{interaction.user.name}'s Inventory"
-            avatar = interaction.user.avatar
-            
-        else:
-            db_currency_user = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
-            db_inventory = [d for d in db_currency.document(str(member.id)).collection("inventory").order_by("item_name").stream()]
-            name = f"{member.name}'s Inventory"
-            avatar = member.avatar
-        
-        if len(db_currency_user):
-            # print("naay user")
-            if len(db_inventory):
-                # print("naay sulod")
-                for doc in db_inventory:
-                    inventory_item = doc.to_dict()  
-                    # print(inventory_item)
-                    item_name = inventory_item["item_name"]
-                    item_name = string.capwords(item_name, sep = None)
-                    item_desc = inventory_item["desc"]
-                    item_price = inventory_item["amount"]
-                    item_isRole = inventory_item["isRole"]
-                    item_count = inventory_item["item_count"]
-                    if item_isRole:
-                        item_role_id = inventory_item["roleID"]
-                        item_role_mention = inventory_item["roleMention"]
-                    items.append(f'**[{item_count}]  {item_name} [{item_role_mention}]**\n{item_desc}' if item_isRole else f'**[{item_count}]  {item_name}**\n{item_desc}')
-                    # print(items)
-                # items = sorted(items)
-                users = items
-                
-                L = 5    # elements per page
-                async def get_page(page: int):
-                    emb = discord.Embed(title="", description="", colour=0x6ac5fe)
-                    emb.set_author(name = name, icon_url= avatar)
-                    offset = (page-1) * L
-                    for user in users[offset:offset+L]:
-                        # print(user)
-                        emb.description += f"{user}\n \n"
-                    # emb.set_author(name=f"Requested by {interaction.user}")
-                    n = Pagination.compute_total_pages(len(users), L)
-                    emb.set_footer(text=f"Page {page} from {n}")
-                    return emb, n
-                
-                await Pagination(interaction, get_page).navegate()
+        for doc in inventory_docs:
+            inventory_item = doc.to_dict()
+            item_name = string.capwords(inventory_item["item_name"], sep=None)
+            item_desc = inventory_item["desc"]
+            item_count = inventory_item["item_count"]
+            item_isRole = inventory_item["isRole"]
+            if item_isRole:
+                item_role_mention = inventory_item["roleMention"]
+                items.append(f'**[{item_count}x]  {item_name} [{item_role_mention}]**\n{item_desc}')
             else:
-                # print("walay sulod")
-                text = "It's pretty empty around here..."
-                colour = 0xff2c2c
-                error = True
-                userExist = True
-        else:
-            # print("walay user")
-            text = f"⛔ No account found.\n\n Use **/ms balance** or **/ms balance member [member_name]** first"
-            colour = 0xff2c2c
-            error = True
+                items.append(f'**[{item_count}]  {item_name}**\n{item_desc}')
+        L = 5
+        async def get_page(page: int):
+            emb = create_embed(title="", author=name, avatar=avatar, colour=0x6ac5fe)
+            offset = (page-1) * L
+            emb.description = ""
+            for user in items[offset:offset+L]:
+                emb.description += f"{user}\n \n"
+            n = Pagination.compute_total_pages(len(items), L)
+            emb.set_footer(text=f"Page {page} from {n}")
+            return emb, n
+        await Pagination(interaction, get_page).navegate()
         
-        if error:
-            items.append(text)
-            nameslist = '\n \n '.join(sorted(items))
-            embed = discord.Embed(
-                colour=colour,
-            )
-            if userExist:
-                embed.set_author(name = name, icon_url= avatar)
-            embed.add_field(name = ' ', value = nameslist)
-            embed.set_footer(text="TIP: Use items by typing /ms use-item [item_name]")
-            await interaction.response.send_message(embed=embed)
-            
     @group.command(name="use-item", description="Use items in your inventory")
     async def use_item(self, interaction: discord.Interaction, item_name: str, override: typing.Optional[bool]):
-        
-        items = []
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_currency = db_server.collection("currency")
-        db_inventory = db_currency.document(str(interaction.user.id)).collection("inventory")
-        db_inventory_item = [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
-        
-        if len(db_inventory_item):
-            for doc in db_inventory_item:
-                inventory_item = doc.to_dict()
-                item_name = inventory_item["item_name"]
-                item_name = string.capwords(item_name, sep = None)
-                # item_desc = inventory_item["desc"]
-                # item_price = inventory_item["amount"]
-                item_count = inventory_item["item_count"]
-                # print(item_count)
-                item_isRole = inventory_item["isRole"]
-                if item_isRole:
-                    item_role_id = inventory_item["roleID"]
-                    item_role_mention = inventory_item["roleMention"]
-                    role = interaction.guild.get_role(item_role_id)
-                    await interaction.user.add_roles(role)
-                    # db_inventory.document(f'{doc.id}').delete()
-                    # if item_count > 1:
-                    #     db_inventory_item.update({"item_count": item_count - 1})
-                    # else:
-                    #     db_inventory.document(f'{doc.id}').delete()
-                    text = f"✅ Used **{item_name}** and received {item_role_mention} role"
-                    colour = 0x77dd77
-                    ephemeral = False
-                elif "rio" in item_name.lower().split():
-                    # global voucher_code_global
-                    voucher_code =''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(8))
-                    voucher_code_global = "RIO-HA" + voucher_code
-                    member = interaction.user
-                    seller = interaction.guild.get_member(704356680472985651)
-                    
-                    embed_buyer = discord.Embed(
-                        colour = 0x77dd77,
-                        title = "Rio Island Voucher Activated!"
-                    )
-                    embed_buyer.add_field(name = 'PROMO CODE: ', value = "RIO-HA" + voucher_code, inline=False)
-                    embed_buyer.set_image(url="https://firebasestorage.googleapis.com/v0/b/discordbot-1113e.appspot.com/o/Screenshot%202024-09-10%20004256.png?alt=media&token=bd966260-edce-425b-b80a-4d998cd8b12d")
-                    embed_buyer.add_field(name = 'USE IT IN: ', value = "[Rio Oasis Island](https://discord.gg/rioasisland)", inline=False)
-                    
-                    embed_seller = discord.Embed(
-                        colour = 0x77dd77,
-                        title = "Voucher Activated!",
-                        timestamp= datetime.datetime.now()
-                    )
-                    embed_seller.add_field(name = 'VOUCHER: ', value = item_name, inline=False)
-                    embed_seller.add_field(name = 'USERNAME: ', value = member.mention, inline=False)
-                    embed_seller.add_field(name = 'PROMO CODE: ', value = "RIO-HA" + voucher_code, inline=False)
-                    embed_seller.set_footer(text='\u200b',icon_url=interaction.guild.icon.url)
-                    
-                    text = f"✅ Used **{item_name}**, Please check PM from Kafka"
-                    colour = 0x77dd77
-                    ephemeral = False
-                    
-                    items.append(text)
-                    nameslist = '\n \n '.join(sorted(items))
-                    embed = discord.Embed(
-                        colour=colour,
-                    )
-                    embed.add_field(name = ' ', value = nameslist)
-                    embed.set_footer(text="TIP: Use /ms trade-item to trade items with other members")
-                    await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
-                    
-                    await member.send(embed=embed_buyer, view=ButtonView(voucher_code_global))
-                    # await member.send(embed=embed_buyer)
-                    await seller.send(embed=embed_seller)
-                    await interaction.response.send_message(f"Please check PM from Kafka", ephemeral=True)
-                    
-                    await ButtonView().wait()
-                else:
-                    # if override:
-                        text = f"✅ Used **{item_name}**, although nothing happened..."
-                        colour = 0x77dd77
-                        ephemeral = False
-                    # else:
-                    #     text = f"⛔ Non-role items can't be used for now. override option is available."
-                    #     colour = 0xff2c2c
-                    #     ephemeral = True
-                if item_count > 1:
-                    db_inventory_item = db_inventory.document(str(doc.id))
-                    db_inventory_item.update({"item_count": item_count - 1})
-                else:
-                    db_inventory.document(f'{doc.id}').delete()
+        db_server = get_db_server()
+        db_currency = get_db_currency(db_server)
+        db_inventory = get_user_inventory(db_currency, interaction.user.id)
+        db_inventory_item = get_inventory_item(db_inventory, item_name)
+        if not db_inventory_item:
+            await send_error(interaction, ITEM_NOT_FOUND)
+            return
+        doc = db_inventory_item[0]
+        inventory_item = doc.to_dict()
+        item_name_cap = string.capwords(inventory_item["item_name"], sep=None)
+        item_count = inventory_item["item_count"]
+        item_isRole = inventory_item["isRole"]
+        if item_isRole:
+            item_role_id = inventory_item["roleID"]
+            item_role_mention = inventory_item["roleMention"]
+            role = interaction.guild.get_role(item_role_id)
+            await interaction.user.add_roles(role)
+            text = USED_ROLE_ITEM.format(item_name=item_name_cap, role_mention=item_role_mention)
+            colour = 0x77dd77
+            ephemeral = False
+        elif "rio" in item_name_cap.lower().split():
+            voucher_code = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            voucher_code_global = "RIO-HA" + voucher_code
+            member = interaction.user
+            seller = interaction.guild.get_member(704356680472985651)
+            embed_buyer = discord.Embed(
+                colour=0x77dd77,
+                title="Rio Island Voucher Activated!"
+            )
+            embed_buyer.add_field(name='PROMO CODE: ', value="RIO-HA" + voucher_code, inline=False)
+            embed_buyer.set_image(url="https://firebasestorage.googleapis.com/v0/b/discordbot-1113e.appspot.com/o/Screenshot%202024-09-10%20004256.png?alt=media&token=bd966260-edce-425b-b80a-4d998cd8b12d")
+            embed_buyer.add_field(name='USE IT IN: ', value="[Rio Oasis Island](https://discord.gg/rioasisland)", inline=False)
+            embed_seller = discord.Embed(
+                colour=0x77dd77,
+                title="Voucher Activated!",
+                timestamp=datetime.datetime.now()
+            )
+            embed_seller.add_field(name='VOUCHER: ', value=item_name_cap, inline=False)
+            embed_seller.add_field(name='USERNAME: ', value=member.mention, inline=False)
+            embed_seller.add_field(name='PROMO CODE: ', value="RIO-HA" + voucher_code, inline=False)
+            embed_seller.set_footer(text='\u200b', icon_url=interaction.guild.icon.url)
+            text = USED_RIO_ITEM.format(item_name=item_name_cap)
+            colour = 0x77dd77
+            ephemeral = False
+            await interaction.response.send_message(embed=create_embed(description=text, colour=colour, footer="TIP: Use /coin trade-item to trade items with other members"), ephemeral=ephemeral)
+            await member.send(embed=embed_buyer, view=ButtonView(voucher_code_global))
+            await seller.send(embed=embed_seller)
+            await ButtonView().wait()
+            # No further response needed
+            return
         else:
-            text = f"⛔ Item not found. Please check correct spelling of item"
-            colour = 0xff2c2c
-            ephemeral = True
-        
-        items.append(text)
-        nameslist = '\n \n '.join(sorted(items))
-        embed = discord.Embed(
-            colour=colour,
-        )
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: Use /ms trade-item to trade items with other members")
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+            text = USED_OTHER_ITEM.format(item_name=item_name_cap)
+            colour = 0x77dd77
+            ephemeral = False
+        # Update or delete inventory
+        if item_count > 1:
+            db_inventory.document(str(doc.id)).update({"item_count": item_count - 1})
+        else:
+            db_inventory.document(f'{doc.id}').delete()
+        await interaction.response.send_message(embed=create_embed(description=text, colour=colour, footer="TIP: Use /coin trade-item to trade items with other members"), ephemeral=ephemeral)
         
     @group.command(name="trade-item", description="Trade items with other members")
     async def trade_item(self, interaction: discord.Interaction, item_name: str, member: discord.Member):
-        items = []
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_currency = db_server.collection("currency")
-        db_currency_user = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
-        db_inventory_sender= db_currency.document(str(interaction.user.id)).collection("inventory")
-        db_inventory_receiver = db_currency.document(str(member.id)).collection("inventory")
-        db_inventory_item = [d for d in db_inventory_sender.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
-        db_inventory_item_receiver = [d for d in db_inventory_receiver.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
-        
-        if len(db_inventory_item):
-            if len(db_currency_user):
-                for doc in db_inventory_item:
-                    inventory_item = doc.to_dict()
-                    item_name = inventory_item["item_name"]
-                    item_name = string.capwords(item_name, sep = None)
-                    item_desc = inventory_item["desc"]
-                    item_price = inventory_item["amount"]
-                    item_isRole = inventory_item["isRole"]
-                    item_count = inventory_item["item_count"]
-
-                    if len(db_inventory_item_receiver):
-                        for doc in db_inventory_item_receiver:
-                            inventory_item_receiver = doc.to_dict()
-                            item_count_receiver = inventory_item_receiver["item_count"]
-                            db_inventory_item_receiver = db_inventory_receiver.document(str(doc.id))
-                            db_inventory_item_receiver.update({"item_count": item_count_receiver + 1})
-                    else:
-                        if item_isRole:
-                            item_role_id = inventory_item["roleID"]
-                            item_role_mention = inventory_item["roleMention"]
-                            db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "roleID": item_role_id, "roleMention": item_role_mention, "item_count": 1})
-                        else:
-                            db_inventory_receiver.add({"item_name" : item_name.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1})
-                    if item_count > 1:
-                        db_inventory_item = db_inventory_sender.document(str(doc.id))
-                        db_inventory_item.update({"item_count": item_count - 1})
-                    else: 
-                        db_inventory_sender.document(f'{doc.id}').delete()
-                    text = f"✅ Traded **{item_name}** to {member.mention}"
-                    colour = 0x77dd77
-                    ephemeral = False
-            else:
-                text = f"⛔ No account found.\n\n Use **/ms balance** or **/ms balance member [member_name]** first."
-                colour = 0xff2c2c
-                error = True
+        db_server = get_db_server()
+        db_currency = get_db_currency(db_server)
+        db_currency_user = get_user_currency_doc(db_currency, member.id)
+        db_inventory_sender = get_user_inventory(db_currency, interaction.user.id)
+        db_inventory_receiver = get_user_inventory(db_currency, member.id)
+        db_inventory_item = get_inventory_item(db_inventory_sender, item_name)
+        db_inventory_item_receiver = get_inventory_item(db_inventory_receiver, item_name)
+        if not db_inventory_item:
+            await send_error(interaction, ITEM_NOT_FOUND)
+            return
+        if not db_currency_user:
+            await send_error(interaction, NO_ACCOUNT_FOUND + ".")
+            return
+        doc = db_inventory_item[0]
+        inventory_item = doc.to_dict()
+        item_name_cap = string.capwords(inventory_item["item_name"], sep=None)
+        item_desc = inventory_item["desc"]
+        item_price = inventory_item["amount"]
+        item_isRole = inventory_item["isRole"]
+        item_count = inventory_item["item_count"]
+        # Add to receiver
+        if db_inventory_item_receiver:
+            receiver_doc = db_inventory_item_receiver[0]
+            inventory_item_receiver = receiver_doc.to_dict()
+            item_count_receiver = inventory_item_receiver["item_count"]
+            db_inventory_receiver.document(str(receiver_doc.id)).update({"item_count": item_count_receiver + 1})
         else:
-            text = f"⛔ Item not found. Please check correct spelling of item"
-            colour = 0xff2c2c
-            ephemeral = True
-            
-        items.append(text)
-        nameslist = '\n \n '.join(sorted(items))
-        embed = discord.Embed(
-            colour=colour,
-        )
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: Use items by typing /ms use-item [item_name]")
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+            add_data = {"item_name": item_name_cap.lower(), "desc": item_desc, "amount": item_price, "isRole": item_isRole, "item_count": 1}
+            if item_isRole:
+                add_data["roleID"] = inventory_item["roleID"]
+                add_data["roleMention"] = inventory_item["roleMention"]
+            db_inventory_receiver.add(add_data)
+        # Remove from sender
+        if item_count > 1:
+            db_inventory_sender.document(str(doc.id)).update({"item_count": item_count - 1})
+        else:
+            db_inventory_sender.document(f'{doc.id}').delete()
+        text = TRADED_ITEM.format(item_name=item_name_cap, mention=member.mention)
+        embed = create_embed(description=text, colour=0x77dd77, footer="TIP: Use items by typing /coin use-item [item_name]")
+        await interaction.response.send_message(embed=embed)
         
-    @group.command(name="leaderboard", description="Moon Shard Leaderboard")
+    @group.command(name="leaderboard", description="Coin Leaderboard")
     async def leaderboard(self, interaction: discord.Interaction):
+        db_server = get_db_server()
+        db_currency = get_db_currency(db_server)
+        leaderboard_docs = [d for d in db_currency.order_by("balance", direction=firestore.Query.DESCENDING).limit(10).stream()]
+        if not leaderboard_docs:
+            await send_error(interaction, LEADERBOARD_EMPTY, ephemeral=False)
+            return
         items = []
-        
-        db_server = db.collection("servers").document(str(interaction.guild_id))
-        db_currency = db_server.collection("currency")
-        db_currency_leaderboard  = [d for d in db_currency.order_by("balance", direction=firestore.Query.DESCENDING).limit(10).stream()]
-        
-        if len(db_currency_leaderboard):
-            rank = 1
-            for doc in db_currency_leaderboard:
-                currency_leaderboard_item = doc.to_dict()
-                member_mention = currency_leaderboard_item["mention"]
-                member_balance = currency_leaderboard_item["balance"]
-                items.append(f"**#{rank}**  {member_mention}\n Balance: <:moon_have:1285884278348976198> **{member_balance:,}**")
-                rank = rank+1
-        else:
-            items.append(f"No leaderboard accounts yet")
-            
-        nameslist = '\n \n '.join(items)
-        embed = discord.Embed(
-                title = "<:moon_have:1285884278348976198> Moon Shard Leaderboards",
-                colour = 0x6ac5fe,
-            )
-        
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: Use items by typing /ms use-item [item_name]")
+        for rank, doc in enumerate(leaderboard_docs, 1):
+            currency_leaderboard_item = doc.to_dict()
+            member_mention = currency_leaderboard_item["mention"]
+            member_balance = currency_leaderboard_item["balance"]
+            items.append(f"**#{rank}**  {member_mention}\n Balance: **{member_balance:,}** {COINS_JUMP_ICON}")
+        embed = create_embed(title=f"{COINS_JUMP_ICON} Coin Leaderboards", description='\n \n '.join(items), colour=0x6ac5fe, footer="TIP: Use items by typing /coin use-item [item_name]")
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.checks.has_any_role('Admin','AMS')
-    @group.command(name="remove", description="AMS Only Command")
+    @admin_only()
+    @group.command(name="remove", description="Admin Only Command")
     async def remove(self, interaction: discord.Interaction, member: discord.Member, currency: typing.Optional[int], item: typing.Optional[str]):
-        items  = []
+        db_server = get_db_server()
+        db_data = db_server.get().to_dict()
+        db_currency = get_db_currency(db_server)
+        items = []
+        colour = 0x77dd77
         if not currency and not item:
-            items.append(f"⛔ currency or item should be given")
-            colour = 0xff2c2c
-        else:
-            colour = 0x77dd77
-            db_server = db.collection("servers").document(str(interaction.guild_id))
-            db_data = db_server.get().to_dict()
-            db_currency = db_server.collection("currency")
-            if currency:
-                db_currency = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
-            if item:
-                db_inventory= db_currency.document(str(member.id)).collection("inventory")
-                db_inventory_item = [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item.lower())).limit(1).stream()]
-            if currency:
-                if len(db_currency):
-                    for doc in db_currency:
-                        currency_user = doc.to_dict()
-                        currency_user_balance = currency_user["balance"]
-                        currency_user_balance = currency_user_balance - currency
-                        db_currency = db_server.collection("currency").document(str(member.id))
-                        if currency_user_balance >= 0:
-                            db_currency.update({"balance": currency_user_balance})
-                        else:
-                            db_currency.update({"balance": 0})
-                    items.append(f"<:moon_have:1285884278348976198> **{currency:,}** was deducted from {member.mention}'s balance")
-                    db_server.set({"total_moonshards" : db_data["total_moonshards"] - currency}, merge=True)
-                else:
-                    items.append(f"⛔ No account found.\n\n Use **/ms balance** or **/ms balance member [member_name]** first")
-                    colour = 0xff2c2c
-                        
-            if item:
-                if len(db_inventory_item):
-                    for doc in db_inventory_item:
-                        inventory_item = doc.to_dict()
-                        inventory_item_name = inventory_item["item_name"]
-                        db_inventory.document(f'{doc.id}').delete()
-                    items.append(f"**{inventory_item_name}** removed from {member.mention}'s inventory")
-                else:
-                    items.append(f"⛔ Item not found. Please check correct spelling of item")
-                    colour = 0xff2c2c
-                    
-            
-        nameslist = '\n \n '.join(sorted(items))
-        embed = discord.Embed(
-            colour=colour,
-        )
-        embed.add_field(name = ' ', value = nameslist)
-        embed.set_footer(text="TIP: you can check shop items using /ms shop")
+            await send_error(interaction, CURRENCY_OR_ITEM_REQUIRED)
+            return
+        if currency:
+            user_currency_docs = get_user_currency_doc(db_currency, member.id)
+            if user_currency_docs:
+                for doc in user_currency_docs:
+                    currency_user = doc.to_dict()
+                    currency_user_balance = currency_user["balance"] - currency
+                    db_currency_doc = db_currency.document(str(member.id))
+                    db_currency_doc.update({"balance": max(currency_user_balance, 0)})
+                items.append(CURRENCY_DEDUCTED.format(icon=COINS_JUMP_ICON, amount=currency, mention=member.mention))
+                db_server.set({"total_moonshards": db_data["total_moonshards"] - currency}, merge=True)
+            else:
+                await send_error(interaction, NO_ACCOUNT_FOUND)
+                return
+        if item:
+            db_inventory = get_user_inventory(db_currency, member.id)
+            db_inventory_item = get_inventory_item(db_inventory, item)
+            if db_inventory_item:
+                for doc in db_inventory_item:
+                    inventory_item = doc.to_dict()
+                    inventory_item_name = inventory_item["item_name"]
+                    db_inventory.document(f'{doc.id}').delete()
+                items.append(ITEM_REMOVED.format(item_name=inventory_item_name, mention=member.mention))
+            else:
+                await send_error(interaction, ITEM_NOT_FOUND)
+                return
+        embed = create_embed(description='\n \n '.join(items), colour=colour, footer="TIP: you can check shop items using /coin shop")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         
-    @app_commands.checks.has_any_role('Admin','Sub-Server Tech')
-    @group.command(name="mass-remove", description="AMS only command")
+    @admin_only()
+    @group.command(name="mass-remove", description="Admin Only Command")
     async def mass_remove(self, interaction: discord.Interaction, role: discord.Role, amount: int):
-        items=[]
-        db_server = db.collection("servers").document(str(interaction.guild_id))
+        db_server = get_db_server()
         db_data = db_server.get().to_dict()
-        db_currency = db_server.collection("currency")
+        db_currency = get_db_currency(db_server)
         total_members = 0
         total_amount = 0
-        await interaction.response.send_message("<a:Infinity1x1:1305957972001951754>")
-        # await interaction.edit_original_response(content="text")
+        await interaction.response.send_message(f"{LOADING_ICON}")
         for member in role.members:
-            
-            db_currency_receiver = [d for d in db_currency.where(filter=FieldFilter("userID", "==", member.id)).stream()]
-            db_currency_receiver_account = db_server.collection("currency").document(str(member.id))
-            total_members= total_members + 1
-            total_amount = total_amount + amount
-            
-            if len(db_currency_receiver):
+            db_currency_receiver = get_user_currency_doc(db_currency, member.id)
+            db_currency_receiver_account = db_currency.document(str(member.id))
+            total_members += 1
+            total_amount += amount
+            if db_currency_receiver:
                 for doc in db_currency_receiver:
                     r_currency = doc.to_dict()
-                    r_currency_balance = r_currency["balance"]
                     r_currency_balance = r_currency["balance"] - amount
-                    if r_currency_balance >= 0:
-                        db_currency_receiver_account.update({"balance": r_currency_balance})
-                    else:
-                        db_currency_receiver_account.update({"balance": 0})
-            
-            # else:
-            #     db_currency_receiver_account.set({"mention": member.mention,"userID": member.id, "balance": amount}, merge=True)
-            
-        
-        db_server.set({"total_moonshards" : db_data["total_moonshards"] - total_amount}, merge=True)
-        colour = 0x77dd77
-        embed = discord.Embed(
-            colour=colour,
-            title = "",
-            description=f"✅ **{total_members:,}** members with {role.mention} role have been deducted **{amount:,}** Moon Shards"
+                    db_currency_receiver_account.update({"balance": max(r_currency_balance, 0)})
+        db_server.set({"total_moonshards": db_data["total_moonshards"] - total_amount}, merge=True)
+        embed = create_embed(
+            colour=0x77dd77,
+            description=SHOP_MASSREMOVE_SUCCESS.format(total_members=total_members, role=role.mention, amount=amount)
         )
         await interaction.edit_original_response(embed=embed)
     
-    @app_commands.checks.has_any_role('AMS', 'Sponsor')
-    @group.command(name="drop", description="Drop moonshards or items")
+    @admin_only()
+    @group.command(name="drop", description="Drop coins or items")
     async def drop(self, interaction: discord.Interaction, currency: typing.Optional[int], item_name: typing.Optional[str]):
-        items  = []  
+        db_server = get_db_server()
+        db_data = db_server.get().to_dict()
+        db_channel = db_data["drop_channel"]
+        channel = interaction.guild.get_channel(int(db_channel))
+        db_currency = get_db_currency(db_server)
         if not currency and not item_name:
-            # text = "You should pick an option"
-            # items.append(f"⛔ currency or item should be given")
-            # colour = 0xff2c2c
-            await interaction.response.send_message(f"⛔ currency or item should be given", ephemeral=True)
-        else:
-            colour = 0x77dd77
-            db_server = db.collection("servers").document(str(interaction.guild_id))
-            db_data = db_server.get().to_dict()
-            db_channel = db_data["drop_channel"]
-            db_drop_restriction = db_data["drop_restriction"]
-            db_drop_timeout = db_data["drop_timeout"]
-            channel = interaction.guild.get_channel(int(db_channel))
-            db_currency = db_server.collection("currency")
-            if currency:
-                db_currency = [d for d in db_currency.where(filter=FieldFilter("userID", "==", interaction.user.id)).stream()]
-                
-                if len(db_currency):
-                    for doc in db_currency:
-                        currency_user = doc.to_dict()
-                        currency_user_balance = currency_user["balance"]
-                        currency_user_remaining_balance = currency_user_balance - currency
-                        if currency_user_remaining_balance >= 0:
-                            
-                            embed = discord.Embed(
-                                title=f"Just dropped <:moon_have:1285884278348976198> {currency:,} Moon Shards!"
-                                )
-                            # embed.set_image(url=item.display_avatar)
-                            embed.set_footer(text="Grab it!")
-                            embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar)
-                            embed.set_image(url="https://firebasestorage.googleapis.com/v0/b/discordbot-1113e.appspot.com/o/_22245448-3bae-47f3-bca3-64a3689cfa7b-removebg-preview%20(2)%20(1).png?alt=media&token=0adc1ce9-44c7-46f7-8f45-f5bccff7c8a9")
-                            view = SimpleView(currency = currency, item_name=None, userID = interaction.user.id)
-            
-                            message = await channel.send('**Hala nahulog!**', embed=embed, view=view)
-                            view.message = message
-            
-                            # global dropper 
-                            # dropper = ctx.message.author.mention
-            
-                            # global drop_restriction
-                            # drop_restriction = db_drop_restriction
-            
-                            await interaction.response.send_message(f":thumbsup:", ephemeral=True)
-                            # print(f"{ctx.message.author.name} dropped {item.display_name}")
-                            await view.wait()
-                            await view.disable_all_items()
-                        else:
-                            await interaction.response.send_message(f":thumbsdown: Not enough Moon Shards to drop", ephemeral=True)
-            if item_name:
-                db_inventory= db_currency.document(str(interaction.user.id)).collection("inventory")
-                db_inventory_item = [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
-                
-                if len(db_inventory_item):
-                    for doc in db_inventory_item:
-                        inventory_item = doc.to_dict()
-                        inventory_item_name = inventory_item["item_name"]
-                        
-                        embed = discord.Embed(
-                                title=f"Just dropped x1 - {string.capwords(inventory_item_name, sep = None)}"
-                                )
-                        # embed.set_image(url=item.display_avatar)
-                        embed.set_footer(text="Grab it!")
-                        embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar)
-                        embed.set_image(url="https://firebasestorage.googleapis.com/v0/b/discordbot-1113e.appspot.com/o/_652387f4-737d-4f53-b0d9-df487a9bba3c%20(1).jpg?alt=media&token=5ebc6085-4284-4efb-9b54-2209db1730a0")
-                        view = SimpleView(currency=None, item_name = inventory_item_name, userID = interaction.user.id)
-            
-                        message = await channel.send('**Hala nahulog!**', embed=embed, view=view)
-                        view.message = message
-            
-                        # global dropper 
-                        # dropper = ctx.message.author.mention
-            
-                        # global drop_restriction
-                        # drop_restriction = db_drop_restriction
-            
-                        await interaction.response.send_message(f":thumbsup:", ephemeral=True)
-                        # print(f"{ctx.message.author.name} dropped {item.display_name}")
-                        await view.wait()
-                        await view.disable_all_items()
-                else:
-                    await interaction.response.send_message(f":thumbsdown: No such item, please check item spelling", ephemeral=True)
-            
-        
-        
-    
-            
+            await send_error(interaction, CURRENCY_OR_ITEM_REQUIRED)
+            return
+        if currency:
+            user_currency_docs = get_user_currency_doc(db_currency, interaction.user.id)
+            if not user_currency_docs:
+                await send_error(interaction, NOT_ENOUGH_TO_DROP)
+                return
+            currency_user = user_currency_docs[0].to_dict()
+            currency_user_balance = currency_user["balance"]
+            currency_user_remaining_balance = currency_user_balance - currency
+            if currency_user_remaining_balance < 0:
+                await send_error(interaction, NOT_ENOUGH_TO_DROP)
+                return
+            embed = create_embed(
+                title=SHOP_DROP_COIN.format(icon=COINS_JUMP_ICON, amount=currency),
+                colour=0x6ac5fe,
+                author=interaction.user.name,
+                avatar=interaction.user.avatar,
+                footer=SHOP_DROP_GRAB
+            )
+            embed.set_image(url="https://cdn.discordapp.com/attachments/1369637436610580523/1371029165171539968/wired-flat-298-coins-in-reveal.gif?ex=6821a5e9&is=68205469&hm=6fc75d7e6d51c6199104730949efb62b7885de0c47752a0675080fbf493befb6&")
+            view = SimpleView(currency=currency, item_name=None, userID=interaction.user.id)
+            message = await channel.send('', embed=embed, view=view)
+            view.message = message
+            await interaction.response.send_message(SHOP_DROP_THUMBSUP, ephemeral=True)
+            await view.wait()
+            await view.disable_all_items()
+        if item_name:
+            db_inventory = get_user_inventory(db_currency, interaction.user.id)
+            db_inventory_item = get_inventory_item(db_inventory, item_name)
+            if not db_inventory_item:
+                await send_error(interaction, NO_SUCH_ITEM_DROP)
+                return
+            inventory_item = db_inventory_item[0].to_dict()
+            inventory_item_name = inventory_item["item_name"]
+            embed = create_embed(
+                title=SHOP_DROP_ITEM.format(item_name=string.capwords(inventory_item_name, sep=None)),
+                colour=0x6ac5fe,
+                author=interaction.user.name,
+                avatar=interaction.user.avatar,
+                footer=SHOP_DROP_GRAB
+            )
+            embed.set_image(url="https://firebasestorage.googleapis.com/v0/b/discordbot-1113e.appspot.com/o/_652387f4-737d-4f53-b0d9-df487a9bba3c%20(1).jpg?alt=media&token=5ebc6085-4284-4efb-9b54-2209db1730a0")
+            view = SimpleView(currency=None, item_name=inventory_item_name, userID=interaction.user.id)
+            message = await channel.send(SHOP_DROP_HALANAHULOG, embed=embed, view=view)
+            view.message = message
+            await interaction.response.send_message(SHOP_DROP_THUMBSUP, ephemeral=True)
+            await view.wait()
+            await view.disable_all_items()
                     
-                    
-                    
-                
-                
-                
-                
-                
-            
-        
-        
-        
-        
-        
-            
-        
-        
-        
-            
-        
-        
-        
-        
-        
-        
-    
-    
-        
-        
-            
-    
-            
-
-        
-    
-    
-        
-        
-        
-
 # Function to add this cog to the bot
 async def setup(bot):
     await bot.add_cog(Currency(bot))
