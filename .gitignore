@@ -1,3 +1,4 @@
 .env
 firebase_config.py
 image
+strings.py
