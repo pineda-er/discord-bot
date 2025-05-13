@@ -431,8 +431,8 @@ class Currency(commands.Cog):
             return emb, n
         await Pagination(interaction, get_page).navegate()
     
-    @group.command(name="buy-item", description="buy an item from Coin Shop")
-    async def buy_item(self, interaction: discord.Interaction, item_name: str):
+    @group.command(name="shop_buy", description="buy an item from Coin Shop")
+    async def shop_buy(self, interaction: discord.Interaction, item_name: str):
         db_server = get_db_server()
         db_data = db_server.get().to_dict()
         db_currency = get_db_currency(db_server)
@@ -705,7 +705,7 @@ class Currency(commands.Cog):
             description=SHOP_MASSREMOVE_SUCCESS.format(total_members=total_members, role=role.mention, amount=amount)
         )
         await interaction.delete_original_response()
-        await interaction.edit_original_response(embed=embed)
+        await interaction.followup.send(embed=embed)
     
     @admin_only()
     @group.command(name="drop", description="Drop coins or items")
