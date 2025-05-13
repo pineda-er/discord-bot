@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta 
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -5,6 +6,7 @@ import aiohttp  # <-- add this import
 import asyncio  # <-- add this import
 import os
 import requests
+import random
 from cogs.currency import give, create_embed
 
 from strings import *
@@ -68,37 +70,28 @@ def search_eth_transaction(wallet_address, amount):
 
 def search_ltc_transaction(wallet_address, amount):
     """
-    Searches for a specific LTC transaction amount for a given wallet address using a free API.
+    Searches for a specific LTC transaction amount for a given wallet address using the BlockCypher API.
     """
     if not wallet_address or amount is None:
         return []
-    api_url = f"https://chain.so/api/v2/address/LTC/{wallet_address}"
+    api_url = f"https://api.blockcypher.com/v1/ltc/main/addrs/{wallet_address}/full?limit=50"
     results = []
     try:
         response = requests.get(api_url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        transactions = data.get("data", {}).get("txs", [])
+        transactions = data.get("txs", [])
         for tx in transactions:
-            if tx.get("confirmed", False):
-                # Fetch transaction details for outputs
-                txid = tx.get("txid")
-                tx_detail_url = f"https://chain.so/api/v2/tx/LTC/{txid}"
-                try:
-                    tx_detail_resp = requests.get(tx_detail_url, timeout=10)
-                    tx_detail_resp.raise_for_status()
-                    tx_detail = tx_detail_resp.json()
-                    outputs = tx_detail.get("data", {}).get("outputs", [])
-                    for output in outputs:
-                        value = float(output.get("value", 0))
+            if tx.get("confirmations", 0) > 0:
+                for output in tx.get("outputs", []):
+                    if wallet_address in output.get("addresses", []):
+                        value = float(output.get("value", 0)) / 1e8
                         if value == amount:
                             results.append({
-                                "tx_hash": txid,
-                                "tx_link": f"https://chain.so/tx/LTC/{txid}",
+                                "tx_hash": tx.get("hash"),
+                                "tx_link": f"https://live.blockcypher.com/ltc/tx/{tx.get('hash')}/",
                                 "found": True
                             })
-                except Exception:
-                    continue
         return results
     except Exception as e:
         print(f"An error occurred while fetching LTC transaction data: {e}")
@@ -108,9 +101,9 @@ class Buy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="buy", description="Display payment method information")
+    @app_commands.command(name="buy", description="Buy coins (or items) instantly")
     @app_commands.describe(
-        method="Payment method (btc,eth)",
+        method="Payment method (btc,eth,ltc)",
         amount="Amount to pay",
         # currency="Currency for crypto payments (usd/php, default: usd)"
     )
@@ -303,10 +296,15 @@ class Buy(commands.Cog):
                             await interaction_button.response.edit_message(view=self)
                             self.sent_button = button
 
+                            retry = random.randint(3, 5)
+                            time_now = datetime.now()
+                            approx_time = time_now + timedelta(minutes=retry + 1)
+                            timestamp = approx_time.timestamp()
+
                             # Send initial status embed
                             status_embed = discord.Embed(
                                 title=f"Checking {self.method_key.upper()} Transaction {LOADING_ICON}",
-                                description=SEARCHING_TRANSACTION_TEXT,
+                                description=SEARCHING_TRANSACTION_TEXT + f" (Approx. <t:{int(timestamp)}:R>)",
                                 color=discord.Color.orange()
                             )
                             status_message = await interaction_button.followup.send(embed=status_embed, ephemeral=True)
@@ -314,13 +312,14 @@ class Buy(commands.Cog):
 
                             found = False
                             tx_link = None
+
                             await asyncio.sleep(60)  # Wait 1 minute before first check
 
-                            for i in range(3):  # Retry up to 3 times
+                            for i in range(retry):  # Retry up to n times
                                 if self.method_key == "btc":
                                     results = search_btc_transaction(BTC_ADDRESS, self.expected_amount / 1e8)
                                 elif self.method_key == "eth":
-                                    results = search_eth_transaction(ETH_ADDRESS, self.expected_amount / 1e18)
+                                    results = search_eth_transaction(ETH_ADDRESS, self.expected_amount)
                                 elif self.method_key == "ltc":
                                     results = search_ltc_transaction(LTC_ADDRESS, self.expected_amount / 1e8)
                                 else:
@@ -331,9 +330,12 @@ class Buy(commands.Cog):
                                         found = True
                                         break
                                 if found and tx_link:
+                                    time_now = datetime.now()
+                                    approx_time = time_now + timedelta(seconds=10)
+                                    timestamp = approx_time.timestamp()
                                     status_embed = discord.Embed(
                                         title=f"{SUCCESS_ICON} Transaction detected!",
-                                        description=f"Sending coins to your balance\n[View Transaction]({tx_link})",
+                                        description=f"Sending coins to your balance <t:{int(timestamp)}:R>\n[View Transaction]({tx_link})",
                                         color=discord.Color.green()
                                     )
                                     await self.last_status_msg.edit(embed=status_embed, view=None)
@@ -351,7 +353,7 @@ class Buy(commands.Cog):
                                             coin_amount = 500
                                         result = await give(self, interaction, interaction.user, coin_amount, bot=True)
                                         if result:
-                                            await asyncio.sleep(10)
+                                            await asyncio.sleep(9)
                                             embed = create_embed(description=result, colour=0x77dd77, footer="TIP: you can check shop items using /coin shop")
                                             await self.last_status_msg.edit(embed=embed, view=None)
                                             self.last_status_msg = None
