@@ -50,7 +50,39 @@ def send_error(interaction, text, ephemeral=True):
     return interaction.response.send_message(embed=embed, ephemeral=ephemeral)
 
 def admin_only():
-    return app_commands.checks.has_role(ADMIN_ROLE_ID)
+    return app_commands.checks.has_role(int(ADMIN_ROLE_ID))
+
+async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int, bot: typing.Optional[bool]):
+    db_server = get_db_server()
+    db_data = db_server.get().to_dict()
+    db_currency = get_db_currency(db_server)
+    receiver_docs = get_user_currency_doc(db_currency, member.id)
+    sender_docs = get_user_currency_doc(db_currency, interaction.user.id)
+    if not receiver_docs:
+        await send_error(interaction, GIVE_RECEIVER_NO_ACCOUNT)
+        return
+    if not sender_docs:
+        await send_error(interaction, GIVE_SENDER_NO_ACCOUNT)
+        return
+    r_currency = receiver_docs[0].to_dict()
+    s_currency = sender_docs[0].to_dict()
+    if bot:
+        isAdmin = True
+    else:
+        isAdmin = discord.utils.get(interaction.guild.get_role(ADMIN_ROLE_ID)) in interaction.user.roles
+    if isAdmin:
+        db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
+        db_server.set({"total_moonshards": db_data["total_moonshards"] + amount}, merge=True)
+        text = GIVE_SUCCESS_ADMIN.format(mention=member.mention, amount=amount)
+    else:
+        sender_balance = s_currency["balance"] - amount
+        if sender_balance < 0:
+            await send_error(interaction, GIVE_NOT_ENOUGH_BALANCE)
+            return
+        db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
+        db_currency.document(str(interaction.user.id)).update({"balance": sender_balance})
+        text = GIVE_SUCCESS.format(amount=amount, mention=member.mention)
+    return text
 
 class Pagination(discord.ui.View):
     def __init__(self, interaction: discord.Interaction, get_page: Callable):
@@ -303,36 +335,12 @@ class Currency(commands.Cog):
         embed.add_field(name=' ', value='\n \n '.join(items))
         await interaction.response.send_message(embed=embed)
     
-    @group.command(name="give", description="Give/Transfer Coins to another member")
-    async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int):
-        db_server = get_db_server()
-        db_data = db_server.get().to_dict()
-        db_currency = get_db_currency(db_server)
-        receiver_docs = get_user_currency_doc(db_currency, member.id)
-        sender_docs = get_user_currency_doc(db_currency, interaction.user.id)
-        if not receiver_docs:
-            await send_error(interaction, GIVE_RECEIVER_NO_ACCOUNT)
-            return
-        if not sender_docs:
-            await send_error(interaction, GIVE_SENDER_NO_ACCOUNT)
-            return
-        r_currency = receiver_docs[0].to_dict()
-        s_currency = sender_docs[0].to_dict()
-        isAdmin = discord.utils.get(interaction.guild.roles, name="Admin") in interaction.user.roles
-        if isAdmin:
-            db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
-            db_server.set({"total_moonshards": db_data["total_moonshards"] + amount}, merge=True)
-            text = GIVE_SUCCESS_ADMIN.format(mention=member.mention, amount=amount)
-        else:
-            sender_balance = s_currency["balance"] - amount
-            if sender_balance < 0:
-                await send_error(interaction, GIVE_NOT_ENOUGH_BALANCE)
-                return
-            db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
-            db_currency.document(str(interaction.user.id)).update({"balance": sender_balance})
-            text = GIVE_SUCCESS.format(amount=amount, mention=member.mention)
-        embed = create_embed(description=text, colour=0x77dd77, footer="TIP: you can check shop items using /coin shop")
-        await interaction.response.send_message(embed=embed)
+    @group.command(name="transfer", description="Transfer Coins to another member")
+    async def transfer(self, interaction: discord.Interaction,amount: int, member: discord.Member,):
+       result = await give(self, interaction, member, amount, False) 
+       if result:
+          embed = create_embed(description=result, colour=0x77dd77, footer="TIP: you can check shop items using /coin shop")
+          await interaction.response.send_message(embed=embed)
         
     @admin_only()
     @group.command(name="mass-give", description="Admin Only Command")
@@ -362,7 +370,8 @@ class Currency(commands.Cog):
             title = "",
             description=MASS_GIVE_SUCCESS.format(total_members=total_members, role=role.mention, amount=amount)
         )
-        await interaction.edit_original_response(embed=embed)
+        await interaction.delete_original_response()
+        await interaction.followup.send(embed=embed)
                 
     @admin_only()
     @group.command(name="add-shop-item", description="Admin Only Command")
@@ -373,6 +382,7 @@ class Currency(commands.Cog):
             db_shop.add({"item_name" : item_name.lower(), "desc": description.lower(), "amount": amount, "isRole": False})
         else:
             db_shop.add({"item_name" : item_name.lower(), "desc": description.lower(), "amount": amount, "isRole": True, "roleID": role.id, "roleMention": role.mention})
+               
         await interaction.response.send_message(ADD_SHOP_ITEM_SUCCESS.format(item_name=item_name), ephemeral=True)
         
     @admin_only()
@@ -694,6 +704,7 @@ class Currency(commands.Cog):
             colour=0x77dd77,
             description=SHOP_MASSREMOVE_SUCCESS.format(total_members=total_members, role=role.mention, amount=amount)
         )
+        await interaction.delete_original_response()
         await interaction.edit_original_response(embed=embed)
     
     @admin_only()

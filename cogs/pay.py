@@ -65,6 +65,44 @@ def search_eth_transaction(wallet_address, amount):
         print(f"An error occurred while fetching ETH transaction data: {e}")
         return []
 
+def search_ltc_transaction(wallet_address, amount):
+    """
+    Searches for a specific LTC transaction amount for a given wallet address using a free API.
+    """
+    if not wallet_address or amount is None:
+        return []
+    api_url = f"https://chain.so/api/v2/address/LTC/{wallet_address}"
+    results = []
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        transactions = data.get("data", {}).get("txs", [])
+        for tx in transactions:
+            if tx.get("confirmed", False):
+                # Fetch transaction details for outputs
+                txid = tx.get("txid")
+                tx_detail_url = f"https://chain.so/api/v2/tx/LTC/{txid}"
+                try:
+                    tx_detail_resp = requests.get(tx_detail_url, timeout=10)
+                    tx_detail_resp.raise_for_status()
+                    tx_detail = tx_detail_resp.json()
+                    outputs = tx_detail.get("data", {}).get("outputs", [])
+                    for output in outputs:
+                        value = float(output.get("value", 0))
+                        if value == amount:
+                            results.append({
+                                "tx_hash": txid,
+                                "tx_link": f"https://chain.so/tx/LTC/{txid}",
+                                "found": True
+                            })
+                except Exception:
+                    continue
+        return results
+    except Exception as e:
+        print(f"An error occurred while fetching LTC transaction data: {e}")
+        return []
+
 class Pay(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -88,6 +126,7 @@ class Pay(commands.Cog):
                 return False
         return app_commands.check(predicate)
 
+    @admin_only()
     @app_commands.command(name="pay", description="Display payment method information")
     @app_commands.describe(
         method="Payment method (e.g., gcash, paypal, crypto)",
@@ -104,6 +143,7 @@ class Pay(commands.Cog):
             app_commands.Choice(name="Paypal", value="paypal"),
             app_commands.Choice(name="BTC", value="btc"),
             app_commands.Choice(name="ETH", value="eth"),
+            app_commands.Choice(name="LTC", value="ltc"),  # Added LTC
             # Add more as needed
         ],
         currency=[
@@ -153,6 +193,10 @@ class Pay(commands.Cog):
                     "name": "ETH",
                     "image": "https://media.discordapp.net/attachments/1369637436610580523/1370498400583159858/IMG_1425.jpg?ex=681fb799&is=681e6619&hm=c995ae02b30ce93ae1594cda48f4139ad68a41b948462a4acc72ded645da67b7&=&format=webp&width=724&height=856"
                 },
+                "ltc": {
+                    "name": "LTC",
+                    "image": "https://media.discordapp.net/attachments/1369637436610580523/1371546324100579430/IMG_1458.jpg?ex=6823878d&is=6822360d&hm=853b01662083ef5f5d4337c593ec2f29b13e2aec206d13576c8b069ca77732e7&=&format=webp&width=768&height=960"  # Example LTC logo
+                },
                 # Add more methods as needed
             }
 
@@ -174,9 +218,9 @@ class Pay(commands.Cog):
             # --- Conversion logic for BTC/ETH ---
             crypto_amount = None
             crypto_amount_str = ""
-            if method_key in ["btc", "eth"] and amount is not None:
+            if method_key in ["btc", "eth", "ltc"] and amount is not None:
                 # Map method_key to CoinGecko IDs
-                coingecko_ids = {"btc": "bitcoin", "eth": "ethereum"}
+                coingecko_ids = {"btc": "bitcoin", "eth": "ethereum", "ltc": "litecoin"}
                 cg_id = coingecko_ids[method_key]
                 api_url = (
                     f"https://api.coingecko.com/api/v3/simple/price"
@@ -190,9 +234,11 @@ class Pay(commands.Cog):
                             if price:
                                 crypto_amount = float(amount) / float(price)
                                 if method_key == "btc":
-                                    crypto_amount_str = f"{crypto_amount:.8f}"  # Only the amount, no symbol
-                                else:
-                                    crypto_amount_str = f"{crypto_amount:.18f}"  # Only the amount, no symbol
+                                    crypto_amount_str = f"{crypto_amount:.8f}"
+                                elif method_key == "eth":
+                                    crypto_amount_str = f"{crypto_amount:.18f}"
+                                elif method_key == "ltc":
+                                    crypto_amount_str = f"{crypto_amount:.8f}"
                             else:
                                 crypto_amount_str = "(Failed to fetch price)"
                                 crypto_amount = None
@@ -213,27 +259,31 @@ class Pay(commands.Cog):
                     description_parts.append(PAYPAL_TEXT)
                 if method_key == "btc":
                     description_parts.append(WALLET_ADDRESS_LABEL)
-                    # Make BTC address copyable by using a code block
                     description_parts.append(f"`{BTC_ADDRESS.strip('`')}`")
                     description_parts.append("")  # Add space after address
                 elif method_key == "eth":
                     description_parts.append(WALLET_ADDRESS_LABEL)
-                    # Make ETH address copyable by using a code block
                     description_parts.append(f"`{ETH_ADDRESS.strip('`')}`")
+                    description_parts.append("")  # Add space after address
+                elif method_key == "ltc":
+                    description_parts.append(WALLET_ADDRESS_LABEL)
+                    description_parts.append(f"`{LTC_ADDRESS.strip('`')}`")
                     description_parts.append("")  # Add space after address
                 if amount is not None:
                     formatted_amount = f"{amount:,}"
                     if method_key in ["gcash", "maya", "gotyme", "bank"]:
                         description_parts.append(f"Amount: ₱{formatted_amount}")
-                    elif method_key in ["btc", "eth","wise","paypal"]:
+                    elif method_key in ["btc", "eth", "ltc", "wise", "paypal"]:
                         currency_label = "USD" if currency_value == "usd" else "PHP"
                         description_parts.append(f"Amount: {formatted_amount} {currency_label}")
                         if crypto_amount_str:
                             description_parts.append("")  # Add space before equivalent
                             if method_key == "btc":
                                 description_parts.append(f"Equivalent: `{crypto_amount_str}` {BTC_ROLL_ICON}")
-                            else:
+                            elif method_key == "eth":
                                 description_parts.append(f"Equivalent: `{crypto_amount_str}` {ETC_ROLL_ICON}")
+                            elif method_key == "ltc":
+                                description_parts.append(f"Equivalent: `{crypto_amount_str}` 🪙")
                     else:
                         description_parts.append(f"Amount: {formatted_amount}")
                 description = "\n".join(description_parts) if description_parts else None
@@ -244,91 +294,79 @@ class Pay(commands.Cog):
                 )
                 embed.set_image(url=info["image"])
 
-                # Add BTC/ETH sent button if needed
-                if method_key in ["btc", "eth"]:
+                # Add BTC/ETH/LTC sent button if needed
+                if method_key in ["btc", "eth", "ltc"]:
                     button_label = f"{method_key.upper()} Sent"
-                    address = BTC_ADDRESS.strip("`") if method_key == "btc" else ETH_ADDRESS.strip("`")
-                    
+                    if method_key == "btc":
+                        address = BTC_ADDRESS.strip("`")
+                    elif method_key == "eth":
+                        address = ETH_ADDRESS.strip("`")
+                    elif method_key == "ltc":
+                        address = LTC_ADDRESS.strip("`")
+                    else:
+                        address = ""
                     if crypto_amount:
-                        print(f"crypto_amount_1: {crypto_amount}")
                         if method_key == "btc":
                             expected_amount = int(round(crypto_amount * 1e8))  # Satoshi
-                            print(f"crypto_amount_2: {expected_amount}")
-                        else:
+                        elif method_key == "eth":
                             expected_amount = int(round(crypto_amount * 1e18))  # Wei
-                            print(f"crypto_amount_2: {expected_amount}")
+                        elif method_key == "ltc":
+                            expected_amount = int(round(crypto_amount * 1e8))  # Litoshi
                     else:
                         expected_amount = 0
-                    # Use the calculated crypto_amount for transaction search
                     class ConfirmButton(discord.ui.View):
-                        def __init__(self, address, expected_amount, method_key):  # MODIFIED parameter
+                        def __init__(self, address, expected_amount, method_key):
                             super().__init__(timeout=None)
                             self.address = address
-                            self.expected_amount = expected_amount  # MODIFIED: Use base units
+                            self.usd_amount = amount
+                            self.expected_amount = expected_amount
                             self.method_key = method_key
-                            self.sent_button = None  # Reference to the button
-                            self.last_status_msg = None  # Track last status message
-                            self.last_error_msg = None  # Track last error message
+                            self.sent_button = None
+                            self.last_status_msg = None
+                            self.last_error_msg = None
 
                         @discord.ui.button(label=button_label, style=discord.ButtonStyle.success, custom_id=f"{method_key}_sent")
                         async def confirm(self, interaction_button: discord.Interaction, button: discord.ui.Button):
-                            # Delete the previous status embed if it exists
                             if self.last_status_msg:
                                 try:
                                     await self.last_status_msg.delete()
                                 except Exception:
                                     pass
                                 self.last_status_msg = None
-
-                            # Also delete the previous error embed if it exists (for retries)
                             if hasattr(self, "last_error_msg") and self.last_error_msg:
                                 try:
                                     await self.last_error_msg.delete()
                                 except Exception:
                                     pass
                                 self.last_error_msg = None
-
-                            # Disable the button while searching
                             button.disabled = True
                             await interaction_button.response.edit_message(view=self)
                             self.sent_button = button
-
-                            # Send initial status embed
                             status_embed = discord.Embed(
                                 title=f"Checking {self.method_key.upper()} Transaction {LOADING_ICON}",
-                                description="Currently searching for your transaction.\nThis may take a few minutes.",
+                                description=SEARCHING_TRANSACTION_TEXT,
                                 color=discord.Color.orange()
                             )
                             status_message = await interaction_button.followup.send(embed=status_embed, ephemeral=False)
                             self.last_status_msg = status_message
-
                             found = False
                             tx_link = None
-                            await asyncio.sleep(60)  # Wait 1 minute before first check
-
-                            for i in range(3):  # Retry up to 3 times
+                            await asyncio.sleep(60)
+                            for i in range(4):
                                 if self.method_key == "btc":
-                                    
-                                    eth_results = search_btc_transaction(BTC_ADDRESS, self.expected_amount)
-                                    
-                                    for result in eth_results:
-                                        if result["found"]:
-                                            tx_link = result["tx_link"]
-                                            found = True
-                                            break
-                                    
+                                    results = search_btc_transaction(BTC_ADDRESS, self.expected_amount / 1e8)
                                 elif self.method_key == "eth":
-                                    
-                                    eth_results = search_eth_transaction(ETH_ADDRESS, self.expected_amount)
-                                    
-                                    for result in eth_results:
-                                        if result["found"]:
-                                            tx_link = result["tx_link"]
-                                            found = True
-                                            break
-
+                                    results = search_eth_transaction(ETH_ADDRESS, self.expected_amount / 1e18)
+                                elif self.method_key == "ltc":
+                                    results = search_ltc_transaction(LTC_ADDRESS, self.expected_amount / 1e8)
+                                else:
+                                    results = []
+                                for result in results:
+                                    if result["found"]:
+                                        tx_link = result["tx_link"]
+                                        found = True
+                                        break
                                 if found and tx_link:
-                                    # Transaction found, update embed
                                     status_embed = discord.Embed(
                                         title=f"{SUCCESS_ICON} Transaction detected!",
                                         description=f"[View Transaction]({tx_link})",
@@ -338,11 +376,8 @@ class Pay(commands.Cog):
                                     self.last_status_msg = None
                                     break
                                 else:
-                                    # Wait before retrying
                                     await asyncio.sleep(60)
-
                             if not found:
-                                # No matching transaction found, re-enable button
                                 if self.sent_button:
                                     self.sent_button.disabled = False
                                     try:
@@ -350,26 +385,21 @@ class Pay(commands.Cog):
                                         await parent_msg.edit(view=self)
                                     except Exception:
                                         pass
-
-                                # Delete the last status embed before sending error embed
                                 if self.last_status_msg:
                                     try:
                                         await self.last_status_msg.delete()
                                     except Exception:
                                         pass
                                     self.last_status_msg = None
-
-                                # Update embed with error message (send a new error embed and track it)
                                 status_embed = discord.Embed(
-                                    description=f"**{ERROR_ICON} No matching transaction found.**\n\nPlease contact support.",
+                                    description=NO_MATCH_TEXT,
                                     color=discord.Color.red()
                                 )
                                 error_msg = await interaction_button.followup.send(embed=status_embed, ephemeral=False)
                                 self.last_error_msg = error_msg
-
-                    await interaction.response.send_message(embed=embed, view=ConfirmButton(address, expected_amount, method_key))
+                    await interaction.response.send_message(embed=embed, view=ConfirmButton(address, expected_amount, method_key), ephemeral=False)
                 else:
-                    await interaction.response.send_message(embed=embed)
+                    await interaction.response.send_message(embed=embed, ephemeral=False)
             else:
                 await interaction.response.send_message(
                     PAYMENT_METHOD_UNKNOWN.format(
