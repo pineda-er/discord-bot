@@ -37,7 +37,7 @@ class welcome(commands.Cog):
         
         if not items:
             db_currency = db_server.collection("currency").document(str(member.id))
-            db_currency.set({"mention": member.mention,"userID": member.id, "balance": int(0)}, merge=True)
+            db_currency.set({"mention": member.mention,"userID": member.id, "balance": int(6)}, merge=True)
         
         my_image = Image.open("./image/welcome.png")
         
