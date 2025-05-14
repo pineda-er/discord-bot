@@ -1,3 +1,4 @@
 .env
 firebase_config.py
-image
+image/
+__pycache__/

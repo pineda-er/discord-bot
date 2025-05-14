@@ -4,103 +4,19 @@ from discord import app_commands
 from discord.ext import commands
 import aiohttp  # <-- add this import
 import asyncio  # <-- add this import
-import os
 import random
-import requests
-
+from utils import *
 from strings import *
-
-def search_btc_transaction(wallet_address, amount):
-    """
-    Searches for a specific BTC transaction amount for a given wallet address using a free API.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://blockchain.info/rawaddr/{wallet_address}"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get("txs", [])
-        for tx in transactions:
-            if tx.get("block_height", 0) > 0:
-                for output in tx.get("out", []):
-                    if output.get("value", 0) / 1e8 == amount:
-                        results.append({
-                            "tx_hash": tx.get("hash"),
-                            "tx_link": f"https://www.blockchain.com/btc/tx/{tx.get('hash')}",
-                            "found": True
-                        })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching BTC transaction data: {e}")
-        return []
-
-def search_eth_transaction(wallet_address, amount):
-    """
-    Searches for a specific ETH transaction amount for a given wallet address using the provided API response format.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://api.blockchain.info/eth/account/{wallet_address}"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get(wallet_address, {}).get("txns", [])
-        for tx in transactions:
-            if tx.get("blockNumber", 0) > 0:
-                try:
-                    value_eth = float(tx.get("value", 0)) / 1e18
-                except Exception:
-                    continue
-                if value_eth == amount:
-                    results.append({
-                        "tx_hash": tx.get("hash"),
-                        "tx_link": f"https://www.blockchain.com/eth/tx/{tx.get('hash')}",
-                        "found": True
-                    })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching ETH transaction data: {e}")
-        return []
-
-def search_ltc_transaction(wallet_address, amount):
-    """
-    Searches for a specific LTC transaction amount for a given wallet address using the BlockCypher API.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://api.blockcypher.com/v1/ltc/main/addrs/{wallet_address}/full?limit=50"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get("txs", [])
-        for tx in transactions:
-            if tx.get("confirmations", 0) > 0:
-                for output in tx.get("outputs", []):
-                    if wallet_address in output.get("addresses", []):
-                        value = float(output.get("value", 0)) / 1e8
-                        if value == amount:
-                            results.append({
-                                "tx_hash": tx.get("hash"),
-                                "tx_link": f"https://live.blockcypher.com/ltc/tx/{tx.get('hash')}/",
-                                "found": True
-                            })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching LTC transaction data: {e}")
-        return []
 
 class Pay(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     def admin_only():
+        """
+        Decorator to restrict command usage to users with the Admin role.
+        Sends an ephemeral error message if the user is not an admin.
+        """
         async def predicate(interaction: discord.Interaction):
             try:
                 if not interaction.guild or not hasattr(interaction.user, "roles"):
@@ -151,6 +67,10 @@ class Pay(commands.Cog):
         amount: int = None,
         currency: app_commands.Choice[str] = None
     ):
+        """
+        Discord slash command to display payment instructions and wallet info for various payment methods.
+        Handles crypto conversion and provides a button to confirm payment for BTC/ETH/LTC.
+        """
         try:
             # Define payment methods and their images
             payment_methods = {
@@ -309,6 +229,10 @@ class Pay(commands.Cog):
                         expected_amount = 0
                     class ConfirmButton(discord.ui.View):
                         def __init__(self, address, expected_amount, method_key):
+                            """
+                            Discord UI View for the payment confirmation button.
+                            Handles transaction search and coin crediting after user clicks the button.
+                            """
                             super().__init__(timeout=None)
                             self.address = address
                             self.usd_amount = amount
@@ -320,6 +244,10 @@ class Pay(commands.Cog):
 
                         @discord.ui.button(label=button_label, style=discord.ButtonStyle.success, custom_id=f"{method_key}_sent")
                         async def confirm(self, interaction_button: discord.Interaction, button: discord.ui.Button):
+                            """
+                            Handles the button press for confirming crypto payment.
+                            Checks for the transaction and credits coins if found.
+                            """
                             if self.last_status_msg:
                                 try:
                                     await self.last_status_msg.delete()
@@ -416,6 +344,10 @@ class Pay(commands.Cog):
     @admin_only()
     @app_commands.command(name="thanks", description="Thanks user for purchasing from the server")
     async def thanks(self, interaction: discord.Interaction):
+        """
+        Discord slash command to thank the most recent non-admin user in the channel for their purchase.
+        Adds the Customer role to the user if not already present.
+        """
         try:
             channel = interaction.channel
             guild = interaction.guild

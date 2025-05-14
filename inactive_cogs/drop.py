@@ -85,7 +85,6 @@ class Drop(commands.Cog):
             for doc in docs:
                 # print(f"{doc.id} => {doc.to_dict()}")
                 drop_item = doc.to_dict()
-                
                 # print(drop_item)
             
             #Connects to firebase firestore to get channel
@@ -119,7 +118,7 @@ class Drop(commands.Cog):
             drop_restriction = db_drop_restriction
             
             await ctx.message.add_reaction('✅')
-            print(f"{ctx.message.author.name} dropped {drop_item["name"]}")
+            print(f"{ctx.message.author.name} dropped {drop_item['name']}")
             await view.wait()
             await view.disable_all_items()
             

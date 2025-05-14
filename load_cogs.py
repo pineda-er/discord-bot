@@ -1,5 +1,6 @@
 import asyncio
 import os
+import aiohttp
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from firebase_admin import credentials, firestore, storage
 from pretty_help import PrettyHelp
 from datetime import timedelta, datetime
 import pytz
+from utils import *
 
 # TODO
 # add setup when joining a server
@@ -35,6 +37,7 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
     await bot.tree.sync()
     # remove_ex_convict.start()
+    monitor_tiktok.start()
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -129,6 +132,44 @@ async def handle_server_booster(before, after, server):
     #         member = discord.utils.get(guild.members, name=ex_convict["name"])
     #         await member.remove_roles(role)
     #         print(f"[{datetime.now().astimezone(pytz.timezone('Asia/Manila')).strftime('%b %d, %Y').upper()}]<{datetime.now().astimezone(pytz.timezone('Asia/Manila')).strftime('%I:%M%p')}> INFO: removed expired EX-CONVICT {ex_convict['name']}")
+
+@tasks.loop(hours=1, reconnect=True)
+async def monitor_tiktok():
+    print(f"Checking TikTok...")
+    try:
+        db_server = await asyncio.to_thread(get_db_server)
+        db_tiktok = db_server.collection("tiktok")
+        tiktok_docs = await asyncio.to_thread(lambda: list(db_tiktok.stream()))
+        for user_doc in tiktok_docs:
+            user_id = user_doc.id
+            monitor_collection = await asyncio.to_thread(lambda: list(db_tiktok.document(user_id).collection("monitor").stream()))
+            for monitor_doc in monitor_collection:
+                try:
+                    monitor_data = monitor_doc.to_dict()
+                    sec_uid = monitor_data.get("sec_uid")
+                    create_time = monitor_data.get("create_time")
+                    # video_id = monitor_data.get("video_id")
+                    username = monitor_data.get("username")
+                    channel_id = monitor_data.get("channel_id")
+                    if sec_uid:
+                        videos = await fetch_video_info(sec_uid, 15, create_time)
+                        if not videos:
+                            continue
+                        else:
+                            videos = sorted(videos, key=lambda x: x['create_time'])
+                            new_create_time = videos[-1]['create_time']
+                            new_video_id = videos[-1]['video_id']
+                            await asyncio.to_thread(db_tiktok.document(str(user_id)).collection("monitor").document(str(sec_uid)).update, {"create_time": new_create_time, "video_id": new_video_id})
+                            await channel.send(content=f"New video(s) from: `{username}`")
+                            for video in videos:
+                                tiktok_url = f"https://www.tiktok.com/@{username}/video/{video['video_id']}"
+                                file = await download_tiktok_video(video['video_id'], tiktok_url)
+                                channel = bot.get_channel(int(channel_id))
+                                await channel.send(content=f"Latest video from `{username}`:\n[[Watch on TikTok]](<{tiktok_url}>)", file=file)
+                except Exception as e:
+                    print(f"Error processing monitor_doc for user {user_id}: {e}")
+    except Exception as e:
+        print(f"Error in monitor_tiktok loop: {e}")
 
 # Asynchronous function to load all cogs (extensions) from the 'cogs' directory
 async def load_cogs():

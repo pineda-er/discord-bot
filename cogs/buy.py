@@ -7,95 +7,8 @@ import asyncio  # <-- add this import
 import os
 import requests
 import random
-from cogs.currency import give, create_embed
-
+from utils import *
 from strings import *
-
-def search_btc_transaction(wallet_address, amount):
-    """
-    Searches for a specific BTC transaction amount for a given wallet address using a free API.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://blockchain.info/rawaddr/{wallet_address}"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get("txs", [])
-        for tx in transactions:
-            if tx.get("block_height", 0) > 0:
-                for output in tx.get("out", []):
-                    if output.get("value", 0) / 1e8 == amount:
-                        results.append({
-                            "tx_hash": tx.get("hash"),
-                            "tx_link": f"https://www.blockchain.com/btc/tx/{tx.get('hash')}",
-                            "found": True
-                        })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching BTC transaction data: {e}")
-        return []
-
-def search_eth_transaction(wallet_address, amount):
-    """
-    Searches for a specific ETH transaction amount for a given wallet address using the provided API response format.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://api.blockchain.info/eth/account/{wallet_address}"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get(wallet_address, {}).get("txns", [])
-        for tx in transactions:
-            if tx.get("blockNumber", 0) > 0:
-                try:
-                    value_eth = float(tx.get("value", 0)) / 1e18
-                except Exception:
-                    continue
-                if value_eth == amount:
-                    results.append({
-                        "tx_hash": tx.get("hash"),
-                        "tx_link": f"https://www.blockchain.com/eth/tx/{tx.get('hash')}",
-                        "found": True
-                    })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching ETH transaction data: {e}")
-        return []
-
-def search_ltc_transaction(wallet_address, amount):
-    """
-    Searches for a specific LTC transaction amount for a given wallet address using the BlockCypher API.
-    """
-    if not wallet_address or amount is None:
-        return []
-    api_url = f"https://api.blockcypher.com/v1/ltc/main/addrs/{wallet_address}/full?limit=50"
-    results = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get("txs", [])
-        for tx in transactions:
-            if tx.get("confirmations", 0) > 0:
-                for output in tx.get("outputs", []):
-                    if wallet_address in output.get("addresses", []):
-                        value = float(output.get("value", 0)) / 1e8
-                        if value == amount:
-                            results.append({
-                                "tx_hash": tx.get("hash"),
-                                "tx_link": f"https://live.blockcypher.com/ltc/tx/{tx.get('hash')}/",
-                                "found": True
-                            })
-        return results
-    except Exception as e:
-        print(f"An error occurred while fetching LTC transaction data: {e}")
-        return []
 
 class Buy(commands.Cog):
     def __init__(self, bot):
@@ -136,6 +49,10 @@ class Buy(commands.Cog):
         amount: app_commands.Choice[str],
         # currency: None
     ):
+        """
+        Discord slash command to handle buying coins/items with various payment methods.
+        Handles conversion, payment instructions, and transaction checking.
+        """
         try:
             # Define payment methods and their images
             payment_methods = {
@@ -157,11 +74,6 @@ class Buy(commands.Cog):
             method_key = method.value.lower()
             amount = int(amount.value)
             currency_value = "usd"
-            # if method_key in ["btc", "eth"]:
-            #     if currency is not None:
-            #         currency_value = currency.value.lower()
-            #     else:
-            #         currency_value = "usd"
             # Require amount for BTC and ETH
             if method_key in ["btc", "eth"] and amount is None:
                 await interaction.response.send_message(
@@ -170,11 +82,11 @@ class Buy(commands.Cog):
                 )
                 return
 
-            # --- Conversion logic for BTC/ETH ---
+            # --- Conversion logic for BTC/ETH/LTC ---
             crypto_amount = None
             crypto_amount_str = ""
             if method_key in ["btc", "eth", "ltc"] and amount is not None:
-                # Map method_key to CoinGecko IDs
+                # Get current crypto price from CoinGecko
                 coingecko_ids = {"btc": "bitcoin", "eth": "ethereum", "ltc": "litecoin"}
                 cg_id = coingecko_ids[method_key]
                 api_url = (
@@ -188,6 +100,7 @@ class Buy(commands.Cog):
                             price = data.get(cg_id, {}).get(currency_value)
                             if price:
                                 crypto_amount = float(amount) / float(price)
+                                # Format crypto amount for display
                                 if method_key == "btc":
                                     crypto_amount_str = f"{crypto_amount:.8f}"
                                 elif method_key == "eth":
@@ -201,9 +114,11 @@ class Buy(commands.Cog):
                             crypto_amount_str = "(Failed to fetch price)"
                             crypto_amount = None
 
+            # Build and send the payment embed
             if method_key in payment_methods:
                 info = payment_methods[method_key]
                 description_parts = []
+                # Add wallet address and amount info
                 if method_key == "btc":
                     description_parts.append(WALLET_ADDRESS_LABEL)
                     description_parts.append(f"`{BTC_ADDRESS.strip('`')}`")
@@ -211,11 +126,11 @@ class Buy(commands.Cog):
                 elif method_key == "eth":
                     description_parts.append(WALLET_ADDRESS_LABEL)
                     description_parts.append(f"`{ETH_ADDRESS.strip('`')}`")
-                    description_parts.append("")  # Add space after address
+                    description_parts.append("")
                 elif method_key == "ltc":
                     description_parts.append(WALLET_ADDRESS_LABEL)
                     description_parts.append(f"`{LTC_ADDRESS.strip('`')}`")
-                    description_parts.append("")  # Add space after address
+                    description_parts.append("")
                 if amount is not None:
                     formatted_amount = f"{amount:,}"
                     if method_key in ["gcash", "maya", "gotyme", "bank"]:
@@ -253,6 +168,7 @@ class Buy(commands.Cog):
                     else:
                         address = ""
                     if crypto_amount:
+                        # Calculate expected amount in smallest unit (satoshi, wei, litoshi)
                         if method_key == "btc":
                             expected_amount = int(round(crypto_amount * 1e8))  # Satoshi
                         elif method_key == "eth":
@@ -275,6 +191,10 @@ class Buy(commands.Cog):
 
                         @discord.ui.button(label=button_label, style=discord.ButtonStyle.success, custom_id=f"{method_key}_sent")
                         async def confirm(self, interaction_button: discord.Interaction, button: discord.ui.Button):
+                            """
+                            Handles the button press for confirming crypto payment.
+                            Checks for the transaction and credits coins if found.
+                            """
                             # Delete the previous status embed if it exists
                             if self.last_status_msg:
                                 try:
@@ -316,6 +236,7 @@ class Buy(commands.Cog):
                             await asyncio.sleep(60)  # Wait 1 minute before first check
 
                             for i in range(retry):  # Retry up to n times
+                                # Search for the transaction using the appropriate method
                                 if self.method_key == "btc":
                                     results = search_btc_transaction(BTC_ADDRESS, self.expected_amount / 1e8)
                                 elif self.method_key == "eth":
@@ -340,6 +261,7 @@ class Buy(commands.Cog):
                                     )
                                     await self.last_status_msg.edit(embed=status_embed, view=None)
                                     self.last_status_msg = status_message
+                                    # Credit coins to user if item is coins
                                     if item.value == "coins":
                                         if self.usd_amount == 5:
                                             coin_amount = 50
@@ -373,13 +295,14 @@ class Buy(commands.Cog):
                                         await self.last_status_msg.delete()
                                     except Exception:
                                         pass
-                                    self.last_status_msg = None
+                                self.last_status_msg = None
                                 status_embed = discord.Embed(
                                     description=NO_MATCH_TEXT,
                                     color=discord.Color.red()
                                 )
                                 error_msg = await interaction_button.followup.send(embed=status_embed, ephemeral=True)
                                 self.last_error_msg = error_msg
+                    # Send the embed and button view
                     await interaction.response.send_message(embed=embed, view=ConfirmButton(address, expected_amount, method_key), ephemeral=True)
                 else:
                     await interaction.response.send_message(embed=embed, ephemeral=True)

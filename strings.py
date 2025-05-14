@@ -15,6 +15,9 @@ BTC_ADDRESS = f"{os.getenv('BTC_ADDRESS')}"
 ETH_ADDRESS = f"{os.getenv('ETH_ADDRESS')}"
 LTC_ADDRESS = f"{os.getenv('LTC_ADDRESS')}"
 
+TIKTOK_API_KEY = os.getenv("TIKTOK_API_KEY")
+TIKTOK_API_HOST = os.getenv("TIKTOK_API_HOST")
+
 THANKS_EMBED = (
     "Thank you {mention} for purchasing from the server!\n\n"
     "If you enjoyed your experience,\nplease consider sending a vouch message \nin"
@@ -31,9 +34,16 @@ ADMIN_ROLE_ID = f"{os.getenv('ADMIN_ROLE_ID')}"
 LOADING_ICON = "<a:loading:1370722180886691850>"
 SUCCESS_ICON = "<a:success:1370826372041146432>"
 ERROR_ICON = "<a:error:1370729292748685312>"
+SEARCH_ICON = "<a:search:1372221113618268160>"
+WARNING_ICON = "<a:warning:1372246429136851024>"
+CONSOLE_ICON = "<a:console:1372222489379340288>"
+DATABASE_ICON = "<a:database:1372222535646580866>"
+IN_PROGRESS_ICON = "<a:coding:1372231548790771893>"
+LIST_ICON = "<a:list:1372249855346606211>"
 
 BTC_ROLL_ICON = "<a:btc_roll:1371012330636312677>"
 ETC_ROLL_ICON = "<a:eth_roll:1371017688297639967>"
+TIKTOK_CIRCLE_ICON = "<a:tiktok_circle:1372224465521479901>"
 
 COINS_JUMP_ICON = "<a:coins_jump:1371031322335776849>"
 # Admin only and error messages

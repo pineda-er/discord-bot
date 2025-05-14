@@ -5,84 +5,18 @@ from discord import app_commands
 from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 import datetime
-from datetime import timedelta, datetime as datetimes
-db = firestore.client()
+from datetime import datetime as datetimes
 from firebase_admin import storage
 from typing import Callable, Optional
 import string
 import random
 from strings import *
+from utils import *
 
 db = firestore.client()
 bucket = storage.bucket()
 
 voucher_code_global = None
-
-# --- Utility Functions ---
-
-def get_db_server(guild_id=None):
-    if guild_id is None:
-        guild_id = DIGITAL_ONE_GUILD_ID
-    return db.collection("servers").document(str(guild_id))
-
-def get_db_currency(db_server):
-    return db_server.collection("currency")
-
-def get_user_currency_doc(db_currency, user_id):
-    return [d for d in db_currency.where(filter=FieldFilter("userID", "==", user_id)).stream()]
-
-def get_user_inventory(db_currency, user_id):
-    return db_currency.document(str(user_id)).collection("inventory")
-
-def get_inventory_item(db_inventory, item_name):
-    return [d for d in db_inventory.where(filter=FieldFilter("item_name", "==", item_name.lower())).limit(1).stream()]
-
-def create_embed(description=None, colour=0x6ac5fe, title=None, author=None, avatar=None, footer=None):
-    embed = discord.Embed(description=description, colour=colour, title=title)
-    if author and avatar:
-        embed.set_author(name=author, icon_url=avatar)
-    if footer:
-        embed.set_footer(text=footer)
-    return embed
-
-def send_error(interaction, text, ephemeral=True):
-    embed = create_embed(description=text, colour=0xff2c2c)
-    return interaction.response.send_message(embed=embed, ephemeral=ephemeral)
-
-def admin_only():
-    return app_commands.checks.has_role(int(ADMIN_ROLE_ID))
-
-async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int, bot: typing.Optional[bool]):
-    db_server = get_db_server()
-    db_data = db_server.get().to_dict()
-    db_currency = get_db_currency(db_server)
-    receiver_docs = get_user_currency_doc(db_currency, member.id)
-    sender_docs = get_user_currency_doc(db_currency, interaction.user.id)
-    if not receiver_docs:
-        await send_error(interaction, GIVE_RECEIVER_NO_ACCOUNT)
-        return
-    if not sender_docs:
-        await send_error(interaction, GIVE_SENDER_NO_ACCOUNT)
-        return
-    r_currency = receiver_docs[0].to_dict()
-    s_currency = sender_docs[0].to_dict()
-    if bot:
-        isAdmin = True
-    else:
-        isAdmin = discord.utils.get(interaction.guild.get_role(ADMIN_ROLE_ID)) in interaction.user.roles
-    if isAdmin:
-        db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
-        db_server.set({"total_moonshards": db_data["total_moonshards"] + amount}, merge=True)
-        text = GIVE_SUCCESS_ADMIN.format(mention=member.mention, amount=amount)
-    else:
-        sender_balance = s_currency["balance"] - amount
-        if sender_balance < 0:
-            await send_error(interaction, GIVE_NOT_ENOUGH_BALANCE)
-            return
-        db_currency.document(str(member.id)).update({"balance": r_currency["balance"] + amount})
-        db_currency.document(str(interaction.user.id)).update({"balance": sender_balance})
-        text = GIVE_SUCCESS.format(amount=amount, mention=member.mention)
-    return text
 
 class Pagination(discord.ui.View):
     def __init__(self, interaction: discord.Interaction, get_page: Callable):
