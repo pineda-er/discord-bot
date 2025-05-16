@@ -200,17 +200,18 @@ class TikTok(commands.Cog):
 #---------------------------------------------------------------------
         elif option.value == "archive":
             try:
+                await interaction.response.defer()
                 if not username:
                     print("[archive] No username provided")
                     embed = create_embed(description=f"{WARNING_ICON} You must provide a TikTok username to archive.", colour=0xffd700)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 if username.startswith("@"): 
                     username = username[1:]
                 username = username.replace("@", "")
                 # Send searching feedback to user
                 embed = create_embed(description=f"{SEARCH_ICON} Searching for TikTok user `{username}`...", colour=0x6ac5fe)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.edit_original_response(embed=embed)
                 db_tiktok_archive = db_server.collection("tiktok_archive")
                 archive_doc = None
                 create_time = None
@@ -225,52 +226,47 @@ class TikTok(commands.Cog):
                 except Exception as e:
                     print(f"[archive] Database error: {e}")
                     embed = create_embed(description=f"{ERROR_ICON} Database error: {e}", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 guild = interaction.guild
                 if not guild:
                     print("[archive] Guild not found")
                     embed = create_embed(description="Guild not found.", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 archive_channel = discord.utils.get(guild.channels, name="tik-archive")
                 if not archive_channel or not isinstance(archive_channel, discord.ForumChannel):
                     print(f"[archive] 'tik-archive' forum channel not found")
                     embed = create_embed(description=f"{ERROR_ICON} 'tik-archive' forum channel not found.", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 thread = None
                 if not archive_doc:
                     try:
-                        # thread = await archive_channel.create_thread(
-                        #     name=username,
-                        #     content=f"Archive thread created for TikTok user `{username}` by {interaction.user.mention}.",
-                        #     reason="TikTok archive request"
-                        # )
-                        # thread = thread.thread  # Add this line
                         six_months_ago = datetime.now(timezone.utc) - timedelta(days=30*6)
                         timestamp_6mo = int(six_months_ago.timestamp())
                         create_time = timestamp_6mo
                     except Exception as e:
                         print(f"[archive] Failed to create thread: {e}")
                         embed = create_embed(description=f"{ERROR_ICON} Failed to create thread: {e}", colour=0xff2c2c)
-                        await self.send_embed_safe(interaction, embed)
+                        await interaction.edit_original_response(embed=embed)
                         return
                 else:
                     try:
                         for t in archive_channel.threads:
-                            if t.name.lower() == username.lower():
+                            if username.lower() in t.name.lower():
                                 thread = t
+                                thread.edit(name=f"{username}") 
                                 break
                         if not thread:
                             print(f"[archive] Archive for {username} exists in database, but thread could not be found.")
                             embed = create_embed(description=f"{WARNING_ICON} Archive for `{username}` exists in database, but thread could not be found.", colour=0xffd700)
-                            await self.send_embed_safe(interaction, embed)
+                            await interaction.edit_original_response(embed=embed)
                             return
                     except Exception as e:
                         print(f"[archive] Error finding thread: {e}")
                         embed = create_embed(description=f"{ERROR_ICON} Error finding thread: {e}", colour=0xff2c2c)
-                        await self.send_embed_safe(interaction, embed)
+                        await interaction.edit_original_response(embed=embed)
                         return
                 # --- TikTok API logic (fetch sec_uid, videos, etc.) ---
                 try:
@@ -278,29 +274,29 @@ class TikTok(commands.Cog):
                 except Exception as e:
                     print(f"[archive] TikTok API error: {e}")
                     embed = create_embed(description=f"{ERROR_ICON} TikTok API error: {e}", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 if not sec_uid:
                     print(f"[archive] Could not find TikTok user {username}")
                     embed = create_embed(description=f"{ERROR_ICON} Could not find TikTok user `{username}`.", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 try:
                     sec_uid = str(sec_uid)
                     create_time = int(create_time)
-                    
-                    
-                    videos = await fetch_video_info(sec_uid, 100, create_time)
+                    embed = create_embed(description=f"{SEARCH_ICON} Fetching new videos found for `{username}`", colour=0x6ac5fe)
+                    await interaction.edit_original_response(embed=embed)
+                    videos = await utils_fetch_video_info(sec_uid, 105, create_time)
                     print(videos)
                 except Exception as e:
                     print(f"[archive] Failed to fetch TikTok videos: {e}")
                     embed = create_embed(description=f"{ERROR_ICON} Failed to fetch TikTok videos: {e}", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 if not videos:
-                    print(f"[archive] No new videos found for {username} in the last 6 months.")
+                    print(f"[archive] No new videos found for {username}")
                     embed = create_embed(description=f"{WARNING_ICON} No new videos found for `{username}`", colour=0xffd700)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
                 try:
                     if not archive_doc:
@@ -308,48 +304,44 @@ class TikTok(commands.Cog):
                         async with aiohttp.ClientSession() as session:
                             async with session.get(profile_pic) as resp:
                                 if resp.status == 200:
-                                
                                     image_bytes = await resp.read()
                                     file = discord.File(io.BytesIO(image_bytes), filename="profile.jpg")
                                 else:
                                     pass
-                        
                         image_file = file
                         thread_with_message = await archive_channel.create_thread(
-                            name=username,
+                            name=f"{username}",
                             content=f"Archive thread created for TikTok user `{username}` by {interaction.user.mention}.",
                             file=image_file,
                             reason="TikTok archive request"
                         )
                         thread = thread_with_message.thread 
                         print("naa dri 1")
-                        # await self.send_image_url_as_file(thread, profile_pic, filename="profile.jpg", content="Profile picture:")
                     videos = sorted(videos, key=lambda x: x['create_time'])
                     new_create_time = videos[-1]['create_time']
                     new_video_id = videos[-1]['video_id']
                     print("naa dri 2")
-                    
                     db_tiktok_archive.document(str(sec_uid)).set({"username": username, "sec_uid": sec_uid, "create_time": new_create_time, "video_id": new_video_id}, merge=True)
                     print("naa dri 3")
                     for video in videos:
                         try:
                             tiktok_url = f"https://www.tiktok.com/@{username}/video/{video['video_id']}"
                             file = await download_tiktok_video(video['video_id'], tiktok_url)
-                            await thread.send(content=f"Archived by: {interaction.user.name}\n[[Watch on Tiktok]](<{tiktok_url}>)", file=file)
+                            await thread.send(content=f"[[Watch on Tiktok]](<{tiktok_url}>)", file=file)
                         except Exception as e:
                             print(f"[archive] Failed to archive video {video['video_id']}: {e}")
                             await thread.send(content=f"{ERROR_ICON} Failed to archive video {video['video_id']}: {e}")
                 except Exception as e:
                     print(f"[archive] Failed to archive videos: {e}")
                     embed = create_embed(description=f"{ERROR_ICON} Failed to archive videos: {e}", colour=0xff2c2c)
-                    await self.send_embed_safe(interaction, embed)
+                    await interaction.edit_original_response(embed=embed)
                     return
-                embed = create_embed(description=f"{IN_PROGRESS_ICON} Archive feature for `{username}` (sec_uid: `{sec_uid}`)\nFetched {len(videos) if videos else 0} videos from the last 6 months.\n\nArchive thread: [Go to topic]({thread.jump_url})", colour=0xffd700)
-                await self.send_embed_safe(interaction, embed)
+                embed = create_embed(description=f"{SUCCESS_ICON} **Fetched {len(videos) if videos else 0} videos.**\n\nArchive thread: [Go to topic]({thread.jump_url})", colour=0x77dd77)
+                await interaction.edit_original_response(embed=embed)
             except Exception as e:
                 print(f"[archive] Unexpected error: {e}")
                 embed = create_embed(description=f"{ERROR_ICON} Unexpected error: {e}", colour=0xff2c2c)
-                await self.send_embed_safe(interaction, embed)
+                await interaction.edit_original_response(embed=embed)
             return
 #---------------------------------------------------------------------
         elif option.value == "scrape":
@@ -442,12 +434,12 @@ class TikTok(commands.Cog):
     def send_embed_safe(self, interaction, embed):
         try:
             if interaction.response.is_done():
-                return interaction.followup.send(embed=embed, ephemeral=True)
+                return interaction.followup.send(embed=embed, ephemeral=False)
             else:
-                return interaction.response.send_message(embed=embed, ephemeral=True)
+                return interaction.response.send_message(embed=embed, ephemeral=False)
         except Exception as e:
             print(f"[archive] send_embed_safe error: {e}")
-            return interaction.followup.send(embed=embed, ephemeral=True)
+            return interaction.followup.send(embed=embed, ephemeral=False)
 
 async def setup(bot):
     await bot.add_cog(TikTok(bot))

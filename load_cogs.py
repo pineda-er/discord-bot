@@ -154,7 +154,7 @@ async def monitor_tiktok():
                     if sec_uid:
                         print(type(sec_uid))
                         print(type(create_time))
-                        videos = await fetch_video_info(sec_uid, 15, create_time)
+                        videos = await utils_fetch_video_info(sec_uid, 15, create_time)
                         if not videos:
                             continue
                         else:

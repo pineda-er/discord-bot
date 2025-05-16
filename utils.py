@@ -8,6 +8,7 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from strings import *
 import requests
+import math
 
 def get_db_server(guild_id=None):
     if guild_id is None:
@@ -180,67 +181,59 @@ async def fetch_tiktok_info(self, username):
                         return None
         return None
     
-async def fetch_video_info(sec_uid, count, create_time):
+async def utils_fetch_video_info(sec_uid, count, create_time):
     url = "https://tiktok-api23.p.rapidapi.com/api/user/posts"
     headers = {
         "X-RapidAPI-Key": "8bc75d822bmsh82134bceaf3727dp1bf2c5jsn1eaa3f70b916",
         "X-RapidAPI-Host": "tiktok-api23.p.rapidapi.com"
     }
-    params = {"secUid": f"{sec_uid}", "count": f"{count}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, params=params) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                print(resp.status)
-                try:
-                    video_number = int(0)
-                    #count is 5
-                    item_response = len(data['data']['itemList'])
-                    print(f"item_response: {item_response}")
-                    count = int(count)
-                    #item_count is 8
-                    # print(f"count: {count}")
-                    # print(f"item_count: {item_response}")
-                    if item_response == count:
-                        #if user has 0 pinned video
+    all_videos = []
+    cursor = "0"
+    max_per_page = 35
+    iterations = math.ceil(count / max_per_page)
+    remaining = count
+    old_create_time = int(create_time)
+    for i in range(iterations):
+        fetch_count = min(max_per_page, remaining)
+        params = {"secUid": f"{sec_uid}", "count": f"{fetch_count}", "cursor": f"{cursor}"}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    cursor = data['data'].get('cursor', None)
+                    try:
+                        item_list = data['data'].get('itemList', [])
+                        item_response = len(item_list)
+                        video_number = 0
+                        if item_response == fetch_count:
                             video_number = 0
-                    elif item_response == count + 1:
-                        #if user has 1 pinned video
+                        elif item_response == fetch_count + 1:
                             video_number = 1
-                    elif item_response == count + 2:
-                        #if user has 2 pinned videos
+                        elif item_response == fetch_count + 2:
                             video_number = 2
-                    elif item_response == count + 3:
-                        #if user has 3 pinned videos
+                        elif item_response == fetch_count + 3:
                             video_number = 3
-                    videos = []
-                    print(video_number)
-                    old_create_time = int(create_time)
-                    if item_response <= count:
-                        count = item_response
-                    for i in range(count):
-                        print(count)
-                        if old_create_time >= data['data']['itemList'][video_number + i]['createTime']:
-                            print("WOW")
-                            # print(f"{old_create_time} >= {data['data']['itemList'][video_number + i]['createTime']}")
-                            continue
-                        else:
-                            print("MEOW")
-                            create_time = data['data']['itemList'][video_number + i]['createTime']
-                            video_id = data['data']['itemList'][video_number + i]['id']
-                            author_avatar = data['data']['itemList'][video_number + i]['author']['avatarMedium']
-                            videos.append({
-                                'create_time': create_time,
-                                'video_id': video_id,
-                                'avatar': author_avatar,
+                        for j in range(min(fetch_count, item_response)):
+                            idx = video_number + j
+                            if idx >= item_response:
+                                break
+                            video = item_list[idx]
+                            if old_create_time >= video['createTime']:
+                                continue
+                            all_videos.append({
+                                'create_time': video['createTime'],
+                                'video_id': video['id'],
+                                'avatar': video['author']['avatarMedium'],
                             })
-                    print(videos)
-                    return videos
-                except Exception as e:
-                    # print(resp.status+"wewe")
-                    print(f"utils.py: {e}")
+                        remaining -= item_response
+                        if not cursor or item_response == 0:
+                            break
+                    except Exception as e:
+                        print(f"utils.py: {e}")
+                        return None
+                else:
                     return None
-    return None
+    return all_videos
 
 async def get_tiktok_download_url(video_id: str, tiktok_url: str):
     async with aiohttp.ClientSession() as session:
