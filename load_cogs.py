@@ -152,6 +152,8 @@ async def monitor_tiktok():
                     username = monitor_data.get("username")
                     channel_id = monitor_data.get("channel_id")
                     if sec_uid:
+                        print(type(sec_uid))
+                        print(type(create_time))
                         videos = await fetch_video_info(sec_uid, 15, create_time)
                         if not videos:
                             continue
@@ -160,12 +162,12 @@ async def monitor_tiktok():
                             new_create_time = videos[-1]['create_time']
                             new_video_id = videos[-1]['video_id']
                             await asyncio.to_thread(db_tiktok.document(str(user_id)).collection("monitor").document(str(sec_uid)).update, {"create_time": new_create_time, "video_id": new_video_id})
+                            channel = bot.get_channel(int(channel_id))
                             await channel.send(content=f"New video(s) from: `{username}`")
                             for video in videos:
                                 tiktok_url = f"https://www.tiktok.com/@{username}/video/{video['video_id']}"
                                 file = await download_tiktok_video(video['video_id'], tiktok_url)
-                                channel = bot.get_channel(int(channel_id))
-                                await channel.send(content=f"Latest video from `{username}`:\n[[Watch on TikTok]](<{tiktok_url}>)", file=file)
+                                await channel.send(content=f"[[Watch on TikTok]](<{tiktok_url}>)", file=file)
                 except Exception as e:
                     print(f"Error processing monitor_doc for user {user_id}: {e}")
     except Exception as e:

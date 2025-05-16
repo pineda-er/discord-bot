@@ -191,10 +191,12 @@ async def fetch_video_info(sec_uid, count, create_time):
         async with session.get(url, headers=headers, params=params) as resp:
             if resp.status == 200:
                 data = await resp.json()
+                print(resp.status)
                 try:
-                    video_number = int
+                    video_number = int(0)
                     #count is 5
                     item_response = len(data['data']['itemList'])
+                    print(f"item_response: {item_response}")
                     count = int(count)
                     #item_count is 8
                     # print(f"count: {count}")
@@ -212,23 +214,31 @@ async def fetch_video_info(sec_uid, count, create_time):
                         #if user has 3 pinned videos
                             video_number = 3
                     videos = []
-                    old_create_time = create_time
+                    print(video_number)
+                    old_create_time = int(create_time)
+                    if item_response <= count:
+                        count = item_response
                     for i in range(count):
+                        print(count)
                         if old_create_time >= data['data']['itemList'][video_number + i]['createTime']:
+                            print("WOW")
                             # print(f"{old_create_time} >= {data['data']['itemList'][video_number + i]['createTime']}")
                             continue
                         else:
+                            print("MEOW")
                             create_time = data['data']['itemList'][video_number + i]['createTime']
                             video_id = data['data']['itemList'][video_number + i]['id']
+                            author_avatar = data['data']['itemList'][video_number + i]['author']['avatarMedium']
                             videos.append({
                                 'create_time': create_time,
-                                'video_id': video_id
+                                'video_id': video_id,
+                                'avatar': author_avatar,
                             })
-                    # print(videos)
+                    print(videos)
                     return videos
                 except Exception as e:
-                    print(resp.status)
-                    print("utils.py:" + e)
+                    # print(resp.status+"wewe")
+                    print(f"utils.py: {e}")
                     return None
     return None
 
